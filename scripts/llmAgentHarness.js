@@ -20,32 +20,43 @@ console.log(`LLM agent harness — chatId=${chatId}. Type a message and press En
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' });
 rl.prompt();
 
-rl.on('line', async (line) => {
+// Piped/scripted input (e.g. `printf "..." | node harness.js`) closes stdin
+// right after the last line, which would otherwise fire 'close' — and this
+// process would exit — before the in-flight Gemini/OpenAI network call
+// finishes. Chaining every line onto one promise and awaiting it on 'close'
+// (rather than exiting immediately) lets scripted single-shot runs actually
+// see their result instead of being killed mid-request.
+let queue = Promise.resolve();
+
+rl.on('line', (line) => {
   const text = line.trim();
   if (!text) {
     rl.prompt();
     return;
   }
 
-  try {
-    const result = await llmAgent.handleMessage({ chatId, phone, text, senderName: 'Harness Tester' });
-    console.log('\n--- reply ---');
-    console.log(result.reply);
-    console.log('--- logEntry (would be appended to Leads sheet in production) ---');
-    console.log(JSON.stringify(result.logEntry, null, 2));
-    if (result.adminNotification) {
-      console.log('--- adminNotification (would be sent to admin WhatsApp in production) ---');
-      console.log(result.adminNotification);
+  queue = queue.then(async () => {
+    try {
+      const result = await llmAgent.handleMessage({ chatId, phone, text, senderName: 'Harness Tester' });
+      console.log('\n--- reply ---');
+      console.log(result.reply);
+      console.log('--- logEntry (would be appended to Leads sheet in production) ---');
+      console.log(JSON.stringify(result.logEntry, null, 2));
+      if (result.adminNotification) {
+        console.log('--- adminNotification (would be sent to admin WhatsApp in production) ---');
+        console.log(result.adminNotification);
+      }
+      console.log(`--- variantId: ${result.variantId} ---\n`);
+    } catch (err) {
+      console.error('Harness error:', err);
     }
-    console.log(`--- variantId: ${result.variantId} ---\n`);
-  } catch (err) {
-    console.error('Harness error:', err);
-  }
-
-  rl.prompt();
+    rl.prompt();
+  });
 });
 
 rl.on('close', () => {
-  console.log('\nBye.');
-  process.exit(0);
+  queue.then(() => {
+    console.log('\nBye.');
+    process.exit(0);
+  });
 });

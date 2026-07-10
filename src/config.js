@@ -18,7 +18,7 @@ const config = {
   // to 'rules' is an instant rollback if the LLM agent misbehaves on real traffic.
   agentMode: (process.env.AGENT_MODE || 'rules').toLowerCase(),
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   // If the Gemini call fails, llmAgent.js falls back to openaiService's
   // structured-output path (gpt-4o-mini) before ever falling back to a static
   // canned reply. Set to 'false' to disable and go straight to the canned reply.

@@ -197,7 +197,7 @@ every new phrasing.
 ```
 AGENT_MODE=llm
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-2.0-flash
 GEMINI_FALLBACK_ENABLED=true
 OPENAI_API_KEY=...   # required for the fallback below
 ```
