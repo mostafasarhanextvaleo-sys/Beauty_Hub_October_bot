@@ -13,6 +13,23 @@ const config = {
   storeName: 'Beauty Hub October',
   cartNudgeDelayHours: parseFloat(process.env.CART_NUDGE_DELAY_HOURS) || 3,
   adminWhatsappNumber: (process.env.ADMIN_WHATSAPP_NUMBER || '').trim(),
+  // 'rules' = existing STAGES state machine (default, proven on live traffic).
+  // 'llm' = free-form Gemini-driven agent (src/bot/llmAgent.js). Switching back
+  // to 'rules' is an instant rollback if the LLM agent misbehaves on real traffic.
+  agentMode: (process.env.AGENT_MODE || 'rules').toLowerCase(),
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  // If the Gemini call fails, llmAgent.js falls back to openaiService's
+  // structured-output path (gpt-4o-mini) before ever falling back to a static
+  // canned reply. Set to 'false' to disable and go straight to the canned reply.
+  geminiFallbackEnabled: (process.env.GEMINI_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false',
+  // Comma-separated WhatsApp phone numbers allowed to use the LLM agent even
+  // when agentMode is 'rules' — lets the LLM agent be canaried on a few real
+  // numbers before flipping AGENT_MODE globally.
+  llmAgentTestChatIds: (process.env.LLM_AGENT_TEST_CHAT_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 };
 
 config.credentialsAbsolutePath = path.isAbsolute(config.googleApplicationCredentials)

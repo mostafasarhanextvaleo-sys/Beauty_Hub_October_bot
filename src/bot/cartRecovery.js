@@ -31,6 +31,7 @@ async function scanAndSendNudges(sendMessageFn) {
 
   for (const [chatId, session] of entries) {
     if (!NUDGE_ELIGIBLE_STAGES.has(session.stage)) continue;
+    if (session.orderPlaced || session.humanHandover) continue;
     if (session.nudgeSentAt) continue;
     if (now - (session.updatedAt || 0) < delayMs) continue;
 
@@ -40,6 +41,11 @@ async function scanAndSendNudges(sendMessageFn) {
       // a real message may have arrived and changed things while we scanned.
       const fresh = conversationMemory.getSession(chatId);
       if (!NUDGE_ELIGIBLE_STAGES.has(fresh.stage)) return;
+      // Belt-and-suspenders independent of stage mapping — a free-form LLM
+      // conversation doesn't have a rigid linear machine underneath it, so
+      // this guards directly against ever nudging a completed/handed-off chat
+      // even if the coarse stage label lags reality for a turn.
+      if (fresh.orderPlaced || fresh.humanHandover) return;
       if (fresh.nudgeSentAt) return;
       if (Date.now() - (fresh.updatedAt || 0) < delayMs) return;
 

@@ -69,6 +69,12 @@ function getSession(chatId) {
       lastLoggedAt: 0,
       nudgeSentAt: null,
       orderConfirmationAttempts: 0,
+      // --- LLM agent (src/bot/llmAgent.js) fields — unused/dormant in 'rules' mode ---
+      orderData: { customerName: null, deliveryAddress: null, altPhone: null },
+      noProgressTurns: 0,
+      humanHandover: false,
+      orderPlaced: false,
+      llm: { history: [] },
       updatedAt: Date.now(),
     });
   }

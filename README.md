@@ -183,7 +183,59 @@ To enable an AI provider instead, edit `.env`:
 - The AI can never recommend a product or quote a price that didn't come from `products.json`/the **Products** tab.
 - If the AI call fails, times out, or the key is missing, the bot automatically falls back to the original rule-based reply so it never stops responding.
 
-## 16. Running with PM2 (background operation)
+## 16. Free-form LLM agent (optional, replaces the rule engine)
+
+By default `AGENT_MODE=rules` and the bot behaves exactly as described above (sections
+1–15) — a deterministic state machine, optionally rephrased by an AI provider but never
+driven by one. Setting `AGENT_MODE=llm` switches to a free-form, conversational agent
+(`src/bot/llmAgent.js`) powered by Google Gemini Flash that reasons over the full chat
+history instead of matching keywords stage-by-stage — handling direct brand/product
+searches, rejections, and chit-chat without needing another manual keyword patch for
+every new phrasing.
+
+**Setup** (edit `.env`):
+```
+AGENT_MODE=llm
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_FALLBACK_ENABLED=true
+OPENAI_API_KEY=...   # required for the fallback below
+```
+
+**Resilience**: if the Gemini call fails (timeout, HTTP error, malformed response), the
+agent automatically retries the same turn against `OPENAI_API_KEY` (gpt-4o-mini) using
+the identical structured-output schema, before ever falling back to a static canned
+reply — a Gemini outage degrades to a second real LLM, not silence. Set
+`GEMINI_FALLBACK_ENABLED=false` to disable this and go straight to the canned reply
+instead. `OPENAI_API_KEY` now serves double duty: the legacy rephrase-only step
+(`AI_PROVIDER=openai`) and this fallback both use it.
+
+**Strict data boundaries, enforced in code, not just prompted**: every reply is
+validated before being sent — any product the model mentions must come from that
+turn's real catalog-search candidates (never invented), and any price it states must
+match a real candidate's price digit-for-digit (never invented or altered). Order
+completion (name + address + alt phone, all confirmed) and human handover are likewise
+decided by code from the model's structured output, never trusted as a bare assertion.
+A hard turn-counter forces a handover if order collection stalls for 3 turns with no
+new field captured, regardless of what the model says.
+
+**Canary rollout**: set `LLM_AGENT_TEST_CHAT_IDS=201xxxxxxxxx,201yyyyyyyyy` (comma-
+separated phone numbers, no `@c.us`/`@lid` suffix) to route only those specific real
+customers through the LLM agent while `AGENT_MODE` stays `rules` for everyone else —
+useful for testing on your own number against live infrastructure before flipping the
+global default.
+
+**Local test harness** (no live-WhatsApp risk — never writes to the Leads sheet or
+pages the real admin number, even with real API keys configured):
+```bash
+node scripts/llmAgentHarness.js
+```
+Type messages and press Enter; state persists turn-to-turn in the same session store
+production uses, so you can script a full conversation (product search → order →
+confirmation) and inspect the exact `reply`/`logEntry`/`adminNotification` each turn
+would have produced.
+
+## 17. Running with PM2 (background operation)
 
 ```bash
 npm install -g pm2
@@ -195,7 +247,7 @@ pm2 logs beauty-hub-bot
 pm2 stop beauty-hub-bot
 ```
 
-## 17. Reconnecting WhatsApp if the session expires
+## 18. Reconnecting WhatsApp if the session expires
 
 1. Stop the bot (`pm2 stop beauty-hub-bot` or `Ctrl+C`).
 2. Delete the session folder: `rm -rf .wwebjs_auth`.
@@ -212,22 +264,35 @@ beauty-hub-october-bot/
 ├── README.md
 ├── credentials.example.json
 ├── products.json
+├── scripts/
+│   └── llmAgentHarness.js       # local test harness for the LLM agent (section 16)
 ├── src/
 │   ├── index.js
 │   ├── config.js
 │   ├── whatsapp/
 │   │   └── client.js
 │   ├── bot/
-│   │   ├── agent.js
+│   │   ├── agent.js             # router: rule engine (default) or llmAgent, by AGENT_MODE
+│   │   ├── llmAgent.js          # free-form Gemini/OpenAI-driven agent (section 16)
+│   │   ├── llmSystemPrompt.js   # persona + structured-output schema for llmAgent.js
+│   │   ├── productSearch.js     # free-text catalog search used by llmAgent.js
+│   │   ├── sessionLogHelpers.js # shared log-field/escalation-response helpers
 │   │   ├── prompts.js
 │   │   ├── orderDetector.js
+│   │   ├── faqDetector.js
+│   │   ├── escalationDetector.js
+│   │   ├── cartRecovery.js
 │   │   ├── conversationMemory.js
 │   │   └── productMatcher.js
 │   ├── services/
 │   │   ├── googleSheets.js
-│   │   ├── openaiService.js
+│   │   ├── googleSheetsProducts.js
+│   │   ├── geminiService.js     # primary LLM provider for llmAgent.js
+│   │   ├── openaiService.js     # legacy rephrase + LLM-agent fallback provider
 │   │   └── anthropicService.js
 │   └── utils/
 │       ├── logger.js
+│       ├── chatLogger.js
+│       ├── chatLock.js
 │       └── helpers.js
 ```

@@ -17,29 +17,8 @@ const config = require('../config');
 const openaiService = require('../services/openaiService');
 const anthropicService = require('../services/anthropicService');
 const logger = require('../utils/logger');
-
-const CATEGORY_LABELS_AR = {
-  skincare: 'بشرة',
-  haircare: 'شعر',
-  makeup: 'ميكب',
-  bodycare: 'عناية بالجسم',
-  offers: 'عروض',
-};
-
-const SKIN_TYPE_LABELS_AR = {
-  oily: 'دهنية',
-  dry: 'جافة',
-  combination: 'مختلطة',
-  sensitive: 'حساسة',
-};
-
-const HAIR_TYPE_LABELS_AR = {
-  dry: 'جفاف',
-  frizzy: 'هيشان',
-  damaged: 'تلف',
-  falling: 'تساقط',
-  dandruff: 'قشرة',
-};
+const { buildNeedDescription, baseLogFields, buildEscalationResponse } = require('./sessionLogHelpers');
+const llmAgent = require('./llmAgent');
 
 function detectCategory(text) {
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
@@ -60,48 +39,6 @@ function detectHairType(text) {
     if (containsAny(text, keywords)) return type;
   }
   return null;
-}
-
-function buildNeedDescription(session) {
-  const parts = [];
-  if (session.category) parts.push(CATEGORY_LABELS_AR[session.category] || session.category);
-  if (session.skinType) parts.push(`بشرة ${SKIN_TYPE_LABELS_AR[session.skinType] || session.skinType}`);
-  if (session.hairType) parts.push(`شعر ${HAIR_TYPE_LABELS_AR[session.hairType] || session.hairType}`);
-  return parts.join(' - ') || 'غير محدد';
-}
-
-function baseLogFields(session, phone, text) {
-  return {
-    customerName: session.customerName || '',
-    customerPhone: phone,
-    customerMessage: text,
-    productName: session.recommendedProduct ? session.recommendedProduct.name : '',
-    customerNeed: buildNeedDescription(session),
-    deliveryAddress: session.deliveryAddress || '',
-  };
-}
-
-// Shared across every stage that checks for it: a customer explicitly asking
-// for a human is answered with reassurance and pings the admin (if
-// ADMIN_WHATSAPP_NUMBER is configured) instead of being silently swallowed by
-// whatever the current stage would otherwise do with the text (e.g. treating
-// it as an address, or repeating a confirmation prompt forever).
-function buildEscalationResponse(session, phone, text) {
-  const logEntry = {
-    ...baseLogFields(getSession(session.chatId), phone, text),
-    orderStatus: 'In Progress',
-    notes: 'العميل طلب التحدث مع خدمة العملاء',
-  };
-  const adminNotification =
-    `🆘 عميل طالب يتكلم مع حد من خدمة العملاء\n` +
-    `رقم العميل: ${phone}\n` +
-    `آخر رسالة: ${text}\n` +
-    `المرحلة: ${session.stage}`;
-  return {
-    reply: 'تمام يا قمر 🌸 هبعتلك حد من فريقنا يتواصل معاكي حالاً.',
-    logEntry,
-    adminNotification,
-  };
 }
 
 function tryDetectCategorySwitch(session, text) {
@@ -531,7 +468,7 @@ function computeRuleBasedReply(session, trimmedText, phone, senderName) {
   return { reply: MESSAGES.fallback, logEntry: null };
 }
 
-async function handleMessage({ chatId, phone, text, senderName }) {
+async function handleMessageRules({ chatId, phone, text, senderName }) {
   const session = getSession(chatId);
   const trimmedText = (text || '').trim();
 
@@ -554,6 +491,19 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   }
 
   return result;
+}
+
+// Router: 'llm' sends every customer through the free-form Gemini-driven
+// agent; 'rules' (default) keeps the proven state machine, except for phone
+// numbers explicitly canaried via LLM_AGENT_TEST_CHAT_IDS. Switching
+// AGENT_MODE back to 'rules' is an instant rollback if the LLM agent
+// misbehaves on real traffic.
+async function handleMessage(params) {
+  const useLlm = config.agentMode === 'llm' || config.llmAgentTestChatIds.includes(params.phone);
+  if (useLlm) {
+    return llmAgent.handleMessage(params);
+  }
+  return handleMessageRules(params);
 }
 
 module.exports = { handleMessage };

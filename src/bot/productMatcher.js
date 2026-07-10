@@ -118,6 +118,10 @@ function getProductCount() {
   return products.length;
 }
 
+function getAllProducts() {
+  return products;
+}
+
 module.exports = {
   findBestMatch,
   findByCategory,
@@ -126,4 +130,5 @@ module.exports = {
   startAutoRefresh,
   getSource,
   getProductCount,
+  getAllProducts,
 };
