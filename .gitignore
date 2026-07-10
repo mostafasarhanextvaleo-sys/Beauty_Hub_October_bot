@@ -1,0 +1,10 @@
+node_modules/
+.env
+credentials.json
+.wwebjs_auth/
+.wwebjs_cache/
+*.log
+chat_history.log.*
+npm-debug.log*
+.DS_Store
+sessions_state.json

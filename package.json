@@ -1,0 +1,22 @@
+{
+  "name": "beauty-hub-october-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp sales chatbot for Beauty Hub October cosmetics store",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "pm2:start": "pm2 start src/index.js --name beauty-hub-bot",
+    "pm2:logs": "pm2 logs beauty-hub-bot",
+    "pm2:stop": "pm2 stop beauty-hub-bot"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0",
+    "dotenv": "^16.4.5",
+    "googleapis": "^140.0.1",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0"
+  }
+}
