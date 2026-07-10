@@ -66,17 +66,20 @@ const RESPONSE_SCHEMA = {
     mentioned_product_ids: {
       type: 'array',
       items: { type: 'string' },
+      description: 'IDs (from the candidate list above) of products actually referenced in reply_text. Empty array if none.',
     },
     price_quoted: {
       type: ['string', 'null'],
+      description:
+        'The exact numeric price you stated in reply_text, digits only (e.g. "150"), if and only if you stated a specific price. Set to null — not a placeholder word — if you did not state a price, or if the candidate\'s price is unavailable.',
     },
     order_data: {
       type: 'object',
       properties: {
-        customer_name: { type: ['string', 'null'] },
-        delivery_address: { type: ['string', 'null'] },
-        alt_phone: { type: ['string', 'null'] },
-        confirmed: { type: 'boolean' },
+        customer_name: { type: ['string', 'null'], description: 'Customer\'s name, if given so far. null if not yet given.' },
+        delivery_address: { type: ['string', 'null'], description: 'Detailed delivery address, if given so far. null if not yet given.' },
+        alt_phone: { type: ['string', 'null'], description: 'Alternative phone number, if given so far. null if not yet given.' },
+        confirmed: { type: 'boolean', description: 'True only if the customer just explicitly confirmed the order details are correct.' },
       },
       required: ['customer_name', 'delivery_address', 'alt_phone', 'confirmed'],
       additionalProperties: false,

@@ -22,6 +22,33 @@ function pushHistory(history, role, text) {
   return [...history, { role, parts: [{ text }] }].slice(-MAX_HISTORY_TURNS);
 }
 
+// Nullable schema fields (price_quoted, order_data.*) are sometimes filled by
+// the model with the literal text "null" instead of actually omitting the
+// value (observed in practice from the OpenAI fallback) — treat that as
+// absent everywhere, not just where it happens to get caught. Left
+// unnormalized, the literal word "null" could otherwise be stored as if it
+// were a real customer name/address/phone.
+function nullableString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'null') return null;
+  return trimmed;
+}
+
+function sanitizeModelOutput(output) {
+  if (!output) return output;
+  return {
+    ...output,
+    price_quoted: nullableString(output.price_quoted),
+    order_data: {
+      ...output.order_data,
+      customer_name: nullableString(output.order_data?.customer_name),
+      delivery_address: nullableString(output.order_data?.delivery_address),
+      alt_phone: nullableString(output.order_data?.alt_phone),
+    },
+  };
+}
+
 // Every mentioned product id must come from THIS turn's candidate list (never
 // the full catalog) — rejecting the whole reply otherwise is safer than
 // guessing what to strip out of an already-written sentence. price_quoted is
@@ -39,12 +66,20 @@ function validateModelOutput(output, candidates) {
   }
 
   if (output.price_quoted) {
-    const quotedDigits = String(output.price_quoted).replace(/\D/g, '');
-    const mentioned = candidates.filter((p) => mentionedIds.includes(p.id));
-    const verified = quotedDigits && mentioned.some((p) => String(p.price || '').replace(/\D/g, '') === quotedDigits);
-    if (!verified) {
-      logger.warn(`LLM agent quoted an unverified price "${output.price_quoted}" — discarding reply.`);
-      return null;
+    const quotedDigits = output.price_quoted.replace(/\D/g, '');
+    // No digits at all (e.g. the model echoed placeholder text like "غير محدد
+    // بعد" instead of leaving the field empty) isn't a fabricated price claim
+    // — there's nothing numeric to have invented, so don't punish an
+    // otherwise-honest reply for it. Only reject when there ARE digits that
+    // don't match any mentioned candidate's real price — that's the actual
+    // hallucination risk this check exists for.
+    if (quotedDigits) {
+      const mentioned = candidates.filter((p) => mentionedIds.includes(p.id));
+      const verified = mentioned.some((p) => String(p.price || '').replace(/\D/g, '') === quotedDigits);
+      if (!verified) {
+        logger.warn(`LLM agent quoted an unverified price "${output.price_quoted}" — discarding reply.`);
+        return null;
+      }
     }
   }
 
@@ -56,9 +91,9 @@ function validateModelOutput(output, candidates) {
 function applyValidatedOutput(session, output, candidates) {
   const prevOrder = session.orderData || {};
   const orderData = {
-    customerName: (output.order_data.customer_name || '').trim() || prevOrder.customerName || null,
-    deliveryAddress: (output.order_data.delivery_address || '').trim() || prevOrder.deliveryAddress || null,
-    altPhone: (output.order_data.alt_phone || '').trim() || prevOrder.altPhone || null,
+    customerName: output.order_data.customer_name || prevOrder.customerName || null,
+    deliveryAddress: output.order_data.delivery_address || prevOrder.deliveryAddress || null,
+    altPhone: output.order_data.alt_phone || prevOrder.altPhone || null,
   };
 
   const fieldsBefore = [prevOrder.customerName, prevOrder.deliveryAddress, prevOrder.altPhone].filter(Boolean).length;
@@ -182,7 +217,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     providerUsed = rawOutput ? 'openai' : null;
   }
 
-  const validated = validateModelOutput(rawOutput, candidates);
+  const validated = validateModelOutput(sanitizeModelOutput(rawOutput), candidates);
 
   if (!validated) {
     // Both providers failed, or validation rejected the surviving output —

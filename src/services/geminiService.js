@@ -18,6 +18,7 @@ function toGeminiSchema(schema) {
   }
 
   const converted = { type: schema.type.toUpperCase() };
+  if (schema.description) converted.description = schema.description;
   if (schema.enum) converted.enum = schema.enum;
   if (schema.items) converted.items = toGeminiSchema(schema.items);
   if (schema.properties) {
