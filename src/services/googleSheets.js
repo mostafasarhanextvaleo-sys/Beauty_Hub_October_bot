@@ -248,8 +248,14 @@ async function ensureProductsTabSeeded() {
   }
 }
 
+// Previously orderStatus+productName only, which meant a customer drip-feeding
+// order details (address, then name) across several turns within the dedup
+// window looked "unchanged" to this signature and got silently skipped — the
+// Leads sheet never saw the new info at all. customerName and deliveryAddress
+// are now part of the signature so any turn that adds/changes either one is
+// treated as new and gets its own row.
 function buildSignature(entry) {
-  return `${entry.orderStatus}|${entry.productName || ''}`;
+  return `${entry.orderStatus}|${entry.productName || ''}|${entry.customerName || ''}|${entry.deliveryAddress || ''}`;
 }
 
 function isDuplicate(phone, entry) {

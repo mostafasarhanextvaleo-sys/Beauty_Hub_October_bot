@@ -68,6 +68,26 @@ function sanitizeModelOutput(output) {
   };
 }
 
+// Arabic diacritics vary across model outputs and product-catalog entries for
+// what is otherwise the same word — strip them (plus collapse whitespace) so
+// a name comparison isn't defeated by a stray fatha/kasra either side didn't
+// happen to include.
+function normalizeArabicText(text) {
+  return text
+    .replace(/[ً-ٰٟ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Catalog names carry a parenthetical English translation
+// ("... 100 مل (Disaar Vitamin C ... 100ml)") that the model never reproduces
+// in Arabic prose — compare against the Arabic portion only.
+function productNameAppearsInReply(product, replyText) {
+  const arabicName = normalizeArabicText(product.name.split('(')[0]);
+  if (!arabicName) return false;
+  return normalizeArabicText(replyText).includes(arabicName);
+}
+
 // Every mentioned product id must come from THIS turn's candidate list (never
 // the full catalog) — rejecting the whole reply otherwise is safer than
 // guessing what to strip out of an already-written sentence. price_quoted is
@@ -78,10 +98,25 @@ function validateModelOutput(output, candidates) {
   if (!output || typeof output.reply_text !== 'string' || !output.reply_text.trim()) return null;
 
   const candidateIds = new Set(candidates.map((p) => p.id));
-  const mentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
-  if (!mentionedIds.every((id) => candidateIds.has(id))) {
-    logger.warn(`LLM agent referenced product id(s) outside this turn's candidate list: ${mentionedIds.join(', ')}`);
+  const rawMentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
+  if (!rawMentionedIds.every((id) => candidateIds.has(id))) {
+    logger.warn(`LLM agent referenced product id(s) outside this turn's candidate list: ${rawMentionedIds.join(', ')}`);
     return null;
+  }
+
+  // Observed in production: the model sometimes tags a candidate as
+  // "mentioned" that it never actually named in reply_text (e.g. wrote out a
+  // 9-item list but tagged a 10th, unlisted candidate). mentioned_product_ids
+  // is what drives the Product Name written to the Leads sheet, so only trust
+  // ids the customer actually saw named in the reply — drop the rest rather
+  // than rejecting an otherwise-good reply outright.
+  const mentionedIds = rawMentionedIds.filter((id) => {
+    const product = candidates.find((p) => p.id === id);
+    return product && productNameAppearsInReply(product, output.reply_text);
+  });
+  if (mentionedIds.length !== rawMentionedIds.length) {
+    const dropped = rawMentionedIds.filter((id) => !mentionedIds.includes(id));
+    logger.warn(`LLM agent tagged product id(s) as mentioned that don't appear in its reply text: ${dropped.join(', ')}`);
   }
 
   if (output.price_quoted) {
@@ -102,7 +137,7 @@ function validateModelOutput(output, candidates) {
     }
   }
 
-  return output;
+  return { ...output, mentioned_product_ids: mentionedIds };
 }
 
 // Code, never the model, decides order completion and human handover — both
@@ -223,40 +258,37 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   // for numbers explicitly opted into localAgentTestChatIds — see config.js
   // for why it defaults to nobody.
   const useLocal = config.localAgentEnabled && config.localAgentTestChatIds.includes(phone);
+  const callArgs = { systemInstruction, contents, responseSchema: RESPONSE_SCHEMA };
 
-  let rawOutput = null;
+  const tiers = [];
+  if (useLocal) tiers.push({ name: 'local', call: () => localService.generateStructuredReply(callArgs) });
+  tiers.push({ name: 'openai', call: () => openaiService.generateStructuredReply(callArgs) });
+  if (config.geminiFallbackEnabled) tiers.push({ name: 'gemini', call: () => geminiService.generateStructuredReply(callArgs) });
+
+  // Try every tier in order, and — critically — keep going not just when a
+  // tier's API call fails outright, but also when it returns schema-valid
+  // JSON that fails content validation (bad product reference, unverified
+  // price, empty reply_text). Previously a single tier's content failure went
+  // straight to the canned fallback without ever trying the next tier, which
+  // is how a customer's order-completing message (e.g. just stating their
+  // name) could be silently lost when the first tier to respond produced
+  // invalid content.
+  let validated = null;
   let providerUsed = null;
-
-  if (useLocal) {
-    rawOutput = await localService.generateStructuredReply({
-      systemInstruction,
-      contents,
-      responseSchema: RESPONSE_SCHEMA,
-    });
-    providerUsed = rawOutput ? 'local' : null;
-    if (!rawOutput) logger.warn('Local model unavailable — falling back to OpenAI gpt-4o-mini for this turn.');
+  for (const tier of tiers) {
+    const raw = await tier.call();
+    if (!raw) {
+      logger.warn(`${tier.name} unavailable — trying next tier.`);
+      continue;
+    }
+    const candidate = validateModelOutput(sanitizeModelOutput(raw), candidates);
+    if (candidate) {
+      validated = candidate;
+      providerUsed = tier.name;
+      break;
+    }
+    logger.warn(`${tier.name} returned a reply that failed validation — trying next tier.`);
   }
-
-  if (!rawOutput) {
-    rawOutput = await openaiService.generateStructuredReply({
-      systemInstruction,
-      contents,
-      responseSchema: RESPONSE_SCHEMA,
-    });
-    providerUsed = rawOutput ? 'openai' : null;
-  }
-
-  if (!rawOutput && config.geminiFallbackEnabled) {
-    logger.warn('OpenAI unavailable — falling back to Gemini for this turn.');
-    rawOutput = await geminiService.generateStructuredReply({
-      systemInstruction,
-      contents,
-      responseSchema: RESPONSE_SCHEMA,
-    });
-    providerUsed = rawOutput ? 'gemini' : null;
-  }
-
-  const validated = validateModelOutput(sanitizeModelOutput(rawOutput), candidates);
 
   if (!validated) {
     // Both providers failed, or validation rejected the surviving output —
@@ -319,7 +351,9 @@ async function handleMessage({ chatId, phone, text, senderName }) {
         ? 'llm_local_v1'
         : providerUsed === 'openai'
         ? 'llm_openai_fallback_v1'
-        : 'llm_gemini_fallback_v1',
+        : providerUsed === 'gemini'
+        ? 'llm_gemini_fallback_v1'
+        : null,
   };
 }
 
