@@ -22,6 +22,24 @@ function pushHistory(history, role, text) {
   return [...history, { role, parts: [{ text }] }].slice(-MAX_HISTORY_TURNS);
 }
 
+// A phone number's shape (digit-heavy, fixed rough length) is distinctive
+// enough to capture safely with a plain regex even with no LLM available at
+// all — unlike a name or address, which could be almost any text and would
+// risk being misfiled into the wrong field if guessed blindly. Deliberately
+// narrow: only fires while already mid-order-collection and only for the
+// phone field, so a stray digit-only message elsewhere in the conversation
+// isn't misread as an order's alt phone.
+const PHONE_LIKE = /^[\d\s+()-]{8,15}$/;
+
+function recoverOrderDataOnFailure(session, text) {
+  const orderData = session.orderData || {};
+  const missingAltPhone = session.stage === STAGES.AWAIT_ORDER_DETAILS && !orderData.altPhone;
+  if (missingAltPhone && PHONE_LIKE.test(text)) {
+    return { ...orderData, altPhone: text.trim() };
+  }
+  return orderData;
+}
+
 // Nullable schema fields (price_quoted, order_data.*) are sometimes filled by
 // the model with the literal text "null" instead of actually omitting the
 // value (observed in practice from the OpenAI fallback) — treat that as
@@ -221,11 +239,26 @@ async function handleMessage({ chatId, phone, text, senderName }) {
 
   if (!validated) {
     // Both providers failed, or validation rejected the surviving output —
-    // the bot must never go silent.
+    // the bot must never go silent AND must never silently drop what the
+    // customer just said. Previously this returned without touching the
+    // session at all, so a customer's phone number or address typed on a
+    // failed turn was gone for good — the next successful turn would have no
+    // idea it was ever sent. Persist the raw message into history (so the
+    // next successful call still has full context and can act on it) and
+    // opportunistically recover a phone number via a narrow heuristic when
+    // one is clearly missing (see recoverOrderDataOnFailure).
+    const historyAfterUser = pushHistory(history, 'user', trimmedText);
+    const recoveredOrderData = recoverOrderDataOnFailure(session, trimmedText);
+
+    updateSession(chatId, {
+      llm: { history: historyAfterUser },
+      orderData: recoveredOrderData,
+    });
+
     const logEntry = {
-      ...baseLogFields(session, phone, trimmedText),
+      ...baseLogFields(getSession(chatId), phone, trimmedText),
       orderStatus: 'In Progress',
-      notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (Gemini/OpenAI) - تم استخدام رد احتياطي',
+      notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (Gemini/OpenAI) - تم حفظ الرسالة للمتابعة في المحاولة التالية',
     };
     return { reply: `${MESSAGES.fallback}\n${MESSAGES.noProductDataDisclaimer}`, logEntry };
   }
@@ -264,4 +297,4 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   };
 }
 
-module.exports = { handleMessage };
+module.exports = { handleMessage, pushHistory };

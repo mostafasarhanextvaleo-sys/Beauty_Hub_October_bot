@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const chatLogger = require('../utils/chatLogger');
 const { runExclusive } = require('../utils/chatLock');
 const conversationMemory = require('./conversationMemory');
+const { pushHistory } = require('./llmAgent');
 const { STAGES } = conversationMemory;
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // how often we scan for idle chats
@@ -52,7 +53,13 @@ async function scanAndSendNudges(sendMessageFn) {
       const message = buildNudgeMessage(fresh);
       try {
         await sendMessageFn(chatId, message);
-        conversationMemory.updateSession(chatId, { nudgeSentAt: Date.now() });
+        // Nudges are sent outside llmAgent.handleMessage, so without this the
+        // LLM agent has no idea a nudge (or the product it named) was ever
+        // sent — a reply like "نعم بيعمل ايه؟" would leave it with nothing to
+        // resolve "it" against. Record it as a model turn so the next real
+        // reply has full context, same as any other reply the agent sends.
+        const updatedHistory = pushHistory((fresh.llm && fresh.llm.history) || [], 'model', message);
+        conversationMemory.updateSession(chatId, { nudgeSentAt: Date.now(), llm: { history: updatedHistory } });
         chatLogger.logOutgoing({
           chatId,
           phone: fresh.chatId ? fresh.chatId.split('@')[0] : '',
