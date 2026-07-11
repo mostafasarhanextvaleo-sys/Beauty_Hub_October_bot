@@ -2,6 +2,7 @@ const { getSession, updateSession, STAGES } = require('./conversationMemory');
 const escalationDetector = require('./escalationDetector');
 const { buildEscalationResponse, baseLogFields } = require('./sessionLogHelpers');
 const productSearch = require('./productSearch');
+const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
 const openaiService = require('../services/openaiService');
 const { buildSystemPrompt, RESPONSE_SCHEMA } = require('./llmSystemPrompt');
@@ -165,7 +166,7 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
         customerName: applied.orderData.customerName || baseFields.customerName,
         deliveryAddress: applied.orderData.deliveryAddress || baseFields.deliveryAddress,
         orderStatus: 'Completed',
-        notes: 'تم تأكيد الطلب عبر الوكيل الذكي (Gemini/OpenAI)',
+        notes: 'تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)',
       },
       adminNotification,
     };
@@ -218,21 +219,41 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', parts: [{ text: trimmedText }] }];
 
-  let rawOutput = await geminiService.generateStructuredReply({
-    systemInstruction,
-    contents,
-    responseSchema: RESPONSE_SCHEMA,
-  });
-  let providerUsed = rawOutput ? 'gemini' : null;
+  // Tier order: local (canaried) -> openai -> gemini. Local is only attempted
+  // for numbers explicitly opted into localAgentTestChatIds — see config.js
+  // for why it defaults to nobody.
+  const useLocal = config.localAgentEnabled && config.localAgentTestChatIds.includes(phone);
 
-  if (!rawOutput && config.geminiFallbackEnabled) {
-    logger.warn('Gemini unavailable — falling back to OpenAI gpt-4o-mini for this turn.');
+  let rawOutput = null;
+  let providerUsed = null;
+
+  if (useLocal) {
+    rawOutput = await localService.generateStructuredReply({
+      systemInstruction,
+      contents,
+      responseSchema: RESPONSE_SCHEMA,
+    });
+    providerUsed = rawOutput ? 'local' : null;
+    if (!rawOutput) logger.warn('Local model unavailable — falling back to OpenAI gpt-4o-mini for this turn.');
+  }
+
+  if (!rawOutput) {
     rawOutput = await openaiService.generateStructuredReply({
       systemInstruction,
       contents,
       responseSchema: RESPONSE_SCHEMA,
     });
     providerUsed = rawOutput ? 'openai' : null;
+  }
+
+  if (!rawOutput && config.geminiFallbackEnabled) {
+    logger.warn('OpenAI unavailable — falling back to Gemini for this turn.');
+    rawOutput = await geminiService.generateStructuredReply({
+      systemInstruction,
+      contents,
+      responseSchema: RESPONSE_SCHEMA,
+    });
+    providerUsed = rawOutput ? 'gemini' : null;
   }
 
   const validated = validateModelOutput(sanitizeModelOutput(rawOutput), candidates);
@@ -258,7 +279,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     const logEntry = {
       ...baseLogFields(getSession(chatId), phone, trimmedText),
       orderStatus: 'In Progress',
-      notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (Gemini/OpenAI) - تم حفظ الرسالة للمتابعة في المحاولة التالية',
+      notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (محلي/OpenAI/Gemini) - تم حفظ الرسالة للمتابعة في المحاولة التالية',
     };
     return { reply: `${MESSAGES.fallback}\n${MESSAGES.noProductDataDisclaimer}`, logEntry };
   }
@@ -293,7 +314,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     reply: validated.reply_text,
     logEntry,
     adminNotification,
-    variantId: providerUsed === 'openai' ? 'llm_openai_fallback_v1' : 'llm_gemini_v1',
+    variantId:
+      providerUsed === 'local'
+        ? 'llm_local_v1'
+        : providerUsed === 'openai'
+        ? 'llm_openai_fallback_v1'
+        : 'llm_gemini_fallback_v1',
   };
 }
 
