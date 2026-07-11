@@ -89,6 +89,23 @@ function productNameAppearsInReply(product, replyText) {
   return normalizeArabicText(replyText).includes(arabicName);
 }
 
+// A turn's candidates come from keyword-searching THAT turn's raw text alone
+// (see productSearch.searchProducts) — a message like "تمام، احجزيلي الأوردر"
+// (order confirmation, no product name repeated) matches nothing and returns
+// zero candidates. The model still needs to reference the item actually being
+// ordered, so the currently-recommended product is always folded back in
+// regardless of whether this turn's text happens to search-match it — without
+// this, order-confirmation turns get validated-rejected for referencing "a
+// product outside this turn's candidate list" when that product is exactly
+// the one from a prior turn the model (correctly) still has in mind.
+function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null } = {}) {
+  const candidates = productSearch.searchProducts(text, { excludeIds });
+  if (recommendedProduct && !candidates.some((p) => p.id === recommendedProduct.id)) {
+    return [recommendedProduct, ...candidates];
+  }
+  return candidates;
+}
+
 // Every mentioned product id must come from THIS turn's candidate list (never
 // the full catalog) — rejecting the whole reply otherwise is safer than
 // guessing what to strip out of an already-written sentence. price_quoted is
@@ -129,7 +146,13 @@ function validateModelOutput(output, candidates) {
     // don't match any mentioned candidate's real price — that's the actual
     // hallucination risk this check exists for.
     if (quotedDigits) {
-      const mentioned = candidates.filter((p) => mentionedIds.includes(p.id));
+      // Verify against rawMentionedIds (candidate-set membership only), NOT
+      // the prose-filtered mentionedIds above — a short reply like "السعر 195
+      // جنيه" can correctly state a candidate's real price without repeating
+      // that candidate's full (often long, SKU-suffixed) name verbatim, and
+      // checking against the narrower list was rejecting genuinely correct
+      // prices whenever that happened.
+      const mentioned = candidates.filter((p) => rawMentionedIds.includes(p.id));
       const verified = mentioned.some((p) => String(p.price || '').replace(/\D/g, '') === quotedDigits);
       if (!verified) {
         logger.warn(`LLM agent quoted an unverified price "${output.price_quoted}" — discarding reply.`);
@@ -250,7 +273,10 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return buildEscalationResponse(getSession(chatId), phone, trimmedText);
   }
 
-  const candidates = productSearch.searchProducts(trimmedText, { excludeIds: session.shownProductIds || [] });
+  const candidates = selectCandidatesForTurn(trimmedText, {
+    excludeIds: session.shownProductIds || [],
+    recommendedProduct: session.recommendedProduct,
+  });
   const systemInstruction = buildSystemPrompt(candidates);
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', parts: [{ text: trimmedText }] }];
@@ -365,4 +391,13 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   };
 }
 
-module.exports = { handleMessage, pushHistory };
+module.exports = {
+  handleMessage,
+  pushHistory,
+  // Exposed so scripts/generateSyntheticData.js can reuse the exact same
+  // sanitize/validate gate real production traffic goes through, instead of
+  // maintaining a second copy that could drift out of sync.
+  sanitizeModelOutput,
+  validateModelOutput,
+  selectCandidatesForTurn,
+};
