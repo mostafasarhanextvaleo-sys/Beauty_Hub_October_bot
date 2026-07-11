@@ -8,3 +8,4 @@ chat_history.log.*
 npm-debug.log*
 .DS_Store
 sessions_state.json
+training-data/conversations.jsonl

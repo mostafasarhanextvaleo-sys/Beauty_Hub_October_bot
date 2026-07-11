@@ -9,6 +9,7 @@ const { buildSystemPrompt, RESPONSE_SCHEMA } = require('./llmSystemPrompt');
 const { MESSAGES } = require('./prompts');
 const config = require('../config');
 const logger = require('../utils/logger');
+const trainingDataLogger = require('../utils/trainingDataLogger');
 
 // Rolling window, not the full conversation — bounds prompt size/cost. ~10
 // user/model turn pairs is enough for the model to track context and avoid
@@ -288,6 +289,13 @@ async function handleMessage({ chatId, phone, text, senderName }) {
       break;
     }
     logger.warn(`${tier.name} returned a reply that failed validation — trying next tier.`);
+  }
+
+  // Distill every validated teacher-tier (openai/gemini) reply into a
+  // training example for the local model — never for providerUsed==='local'
+  // itself, since that's the tier we're trying to improve, not imitate.
+  if (validated && providerUsed !== 'local') {
+    trainingDataLogger.logTrainingExample({ systemInstruction, contents, output: validated, providerUsed });
   }
 
   if (!validated) {
