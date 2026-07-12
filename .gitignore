@@ -9,3 +9,7 @@ npm-debug.log*
 .DS_Store
 sessions_state.json
 training-data/conversations.jsonl
+training/venv/
+training/local_model/
+training/tokenized_dataset/
+training/lora_out/
