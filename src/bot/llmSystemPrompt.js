@@ -43,6 +43,16 @@ const SHIPPING_POLICY = `سياسات الشحن والتوصيل — دي حق�
 - نطاق التغطية: التوصيل متاح جوه مدينة أكتوبر بس، ومش شامل باقي المحافظات أو المناطق التانية. لو العميل بيسأل عن التوصيل لمنطقة برا أكتوبر، اعتذري بلطف ووضحيله إن التغطية حالياً مقتصرة على أكتوبر بس.
 ملحوظة مهمة: لو ذكرتي الـ60 جنيه دي في ردك، متحطيهاش في حقل price_quoted ولا routine_bundle_price_quoted — الحقلين دول لسعر المنتج بس، مش لمصاريف الشحن.`;
 
+// Only appended when the session actually received cartRecovery.js's second
+// nudge (session.secondNudgeSentAt — see llmAgent.js's buildSystemPrompt
+// call), which is the one that promises real, staff-honored free shipping
+// (see cartRecovery.js's SECOND_NUDGE_WITH_PRICE comment). Without this,
+// Sara had no way to know that specific promise existed and would flatly
+// contradict it with the flat-fee policy above — this is the fix for that.
+// Placed AFTER SHIPPING_POLICY in the prompt so it reads as the override it
+// is, same instruction-order pattern used for corrections vs. the persona.
+const FREE_SHIPPING_EXCEPTION = `استثناء لسياسة الشحن الثابتة فوق — العميلة دي سبق وبعتنالها رسالة وعدناها فيها بتوصيل مجاني كهدية لو أكدت الأوردر. لو سألت عن مصاريف الشحن، متقوليلهاش إن الشحن بـ60 جنيه — أكدي لها بثقة ووضوح إن التوصيل هيبقى مجاني ليها زي ما اتفقنا، من غير ما تدفع مصاريف شحن خالص.`;
+
 // Real, confirmed store policy (owner-provided, 2026-07-16, "Flexible &
 // Trust-Building" option) — same ground-truth status as SHIPPING_POLICY
 // above: facts Sara explains in her own warm words, never invents beyond.
@@ -71,7 +81,7 @@ function serializeCandidates(products) {
 // the kind of arithmetic an LLM gets wrong, and there's no schema field for
 // it to be validated against anyway), just to state the real individual
 // price of each product plus the fact that 10% comes off both together.
-function buildSystemPrompt(candidates, bundleComplement) {
+function buildSystemPrompt(candidates, bundleComplement, freeShippingPromised) {
   const bundleSection = bundleComplement
     ? `
 
@@ -80,9 +90,12 @@ function buildSystemPrompt(candidates, bundleComplement) {
 لو اقترحتيه في ردك (reply_text)، لازم برضه تحطي id:${bundleComplement.id} في حقل routine_bundle_suggested_id وسعره الحقيقي في routine_bundle_price_quoted — أي ذكر للمنتج ده في الرد لازم يترافق مع تعبئة الحقلين دول، من غير ما تحسبي أي رقم نهائي مخصوم بنفسك. قوليلها إن في خصم ${BUNDLE_DISCOUNT_PERCENT}% على الاتنين مع بعض كروتين متكامل لو حجزتهم سوا — احسبي السعر النهائي المخصوم سيبيه لفريق المتجر وقت تأكيد الطلب.`
     : '';
 
-  // Corrections are admin-approved rules from chatEvaluator.js's automated
-  // review (see src/bot/corrections.js) — never written here directly by the
-  // evaluator, only by approveCorrection() after a human reviews them. Kept
+  const freeShippingSection = freeShippingPromised ? `\n\n${FREE_SHIPPING_EXCEPTION}` : '';
+
+  // Corrections are admin-approved rules — either from a human directly, or
+  // (historically, before the chat-evaluator daemon was retired 2026-07-16)
+  // from its automated review. Never written here directly, only by
+  // approveCorrection()/approveCorrections() after a human reviews them. Kept
   // as a flat list appended after the core persona rather than edited into
   // SARA_PERSONA itself, so each one is independently traceable/removable
   // (and the persona rules — which llmAgent.js's order-collection and
@@ -98,7 +111,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
 
   return `${SARA_PERSONA}
 
-${SHIPPING_POLICY}
+${SHIPPING_POLICY}${freeShippingSection}
 
 ${RETURN_POLICY}
 

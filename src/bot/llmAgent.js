@@ -10,6 +10,8 @@ const { MESSAGES } = require('./prompts');
 const config = require('../config');
 const logger = require('../utils/logger');
 const trainingDataLogger = require('../utils/trainingDataLogger');
+const agentStats = require('./agentStats');
+const routineBundles = require('./routineBundles');
 
 // Rolling window, not the full conversation — bounds prompt size/cost. ~10
 // user/model turn pairs is enough for the model to track context and avoid
@@ -60,6 +62,8 @@ function sanitizeModelOutput(output) {
   return {
     ...output,
     price_quoted: nullableString(output.price_quoted),
+    routine_bundle_suggested_id: nullableString(output.routine_bundle_suggested_id),
+    routine_bundle_price_quoted: nullableString(output.routine_bundle_price_quoted),
     order_data: {
       ...output.order_data,
       customer_name: nullableString(output.order_data?.customer_name),
@@ -112,7 +116,7 @@ function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = n
 // checked digit-for-digit against a mentioned candidate's real price rather
 // than scanning reply_text for any number, which would false-positive on
 // legitimate non-price digits (product sizes, SPF ratings, etc).
-function validateModelOutput(output, candidates) {
+function validateModelOutput(output, candidates, bundleComplement = null) {
   if (!output || typeof output.reply_text !== 'string' || !output.reply_text.trim()) return null;
 
   const candidateIds = new Set(candidates.map((p) => p.id));
@@ -161,7 +165,42 @@ function validateModelOutput(output, candidates) {
     }
   }
 
-  return { ...output, mentioned_product_ids: mentionedIds };
+  // Routine-bundle fields are validated the same way as price_quoted, but a
+  // failure here only drops the bundle suggestion rather than discarding the
+  // whole reply — it's an upsell add-on, not core order-processing
+  // correctness, so being defensive (silently drop) beats being strict
+  // (reject a perfectly good reply just because the bonus upsell was off).
+  let routineBundleSuggestedId = output.routine_bundle_suggested_id || null;
+  let routineBundlePriceQuoted = output.routine_bundle_price_quoted || null;
+
+  if (routineBundleSuggestedId) {
+    if (!bundleComplement || routineBundleSuggestedId !== bundleComplement.id) {
+      logger.warn(
+        `LLM agent suggested a routine bundle id "${routineBundleSuggestedId}" that wasn't offered this turn — dropping the bundle suggestion, keeping the rest of the reply.`
+      );
+      routineBundleSuggestedId = null;
+      routineBundlePriceQuoted = null;
+    } else if (routineBundlePriceQuoted) {
+      const quotedDigits = routineBundlePriceQuoted.replace(/\D/g, '');
+      const verified = !quotedDigits || String(bundleComplement.price || '').replace(/\D/g, '') === quotedDigits;
+      if (!verified) {
+        logger.warn(
+          `LLM agent quoted an unverified routine-bundle price "${routineBundlePriceQuoted}" for ${bundleComplement.id} — dropping the bundle suggestion, keeping the rest of the reply.`
+        );
+        routineBundleSuggestedId = null;
+        routineBundlePriceQuoted = null;
+      }
+    }
+  } else {
+    routineBundlePriceQuoted = null;
+  }
+
+  return {
+    ...output,
+    mentioned_product_ids: mentionedIds,
+    routine_bundle_suggested_id: routineBundleSuggestedId,
+    routine_bundle_price_quoted: routineBundlePriceQuoted,
+  };
 }
 
 // Code, never the model, decides order completion and human handover — both
@@ -211,13 +250,27 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
   const baseFields = baseLogFields(session, phone, text);
 
   if (applied.orderConfirmed) {
+    // Recovery attribution: cartRecovery.js sets nudgeSentAt/secondNudgeSentAt
+    // on this same session object, but never touches the Sheet itself — this
+    // is the one place that later learns an order actually closed, so it's
+    // the right place to note whether a nudge preceded it. Without this,
+    // "did our cart-recovery nudges make money" has no answer anywhere.
+    // The second nudge promises real free shipping (see cartRecovery.js) —
+    // flagged explicitly and loudly here, not just "a nudge happened", since
+    // someone actually has to waive the delivery fee for this specific order
+    // at fulfillment for that promise to be true.
+    const recoveryNote = session.secondNudgeSentAt
+      ? ' (بعد تذكير السلة المتروكة الثاني — 🚚 وعدنا العميل بتوصيل مجاني، لازم نلتزم بيه!)'
+      : session.nudgeSentAt
+      ? ' (بعد تذكير السلة المتروكة)'
+      : '';
     const adminNotification =
       `✅ طلب جديد مكتمل! (وكيل ذكي)\n` +
       `المنتج: ${applied.recommendedProduct ? applied.recommendedProduct.name : 'غير محدد'}\n` +
       `الاسم: ${applied.orderData.customerName || 'غير محدد'}\n` +
       `رقم العميل: ${phone}\n` +
       `رقم بديل: ${applied.orderData.altPhone || 'غير محدد'}\n` +
-      `العنوان: ${applied.orderData.deliveryAddress || 'غير محدد'}`;
+      `العنوان: ${applied.orderData.deliveryAddress || 'غير محدد'}${recoveryNote}`;
     return {
       logEntry: {
         ...baseFields,
@@ -225,7 +278,7 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
         customerName: applied.orderData.customerName || baseFields.customerName,
         deliveryAddress: applied.orderData.deliveryAddress || baseFields.deliveryAddress,
         orderStatus: 'Completed',
-        notes: 'تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)',
+        notes: `تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)${recoveryNote}`,
       },
       adminNotification,
     };
@@ -277,14 +330,21 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     excludeIds: session.shownProductIds || [],
     recommendedProduct: session.recommendedProduct,
   });
-  const systemInstruction = buildSystemPrompt(candidates);
+  // Routine-bundle upsell: only offered off the top (best-matched) candidate,
+  // and only if it isn't already one of the two products in the bundle pair
+  // itself (skip offering a moisturizer as its own bundle complement, or
+  // re-offering the same pairing turn after turn once both are already shown).
+  const bundleComplement = candidates[0] ? routineBundles.getBundleComplement(candidates[0].id) : null;
+  const validBundleComplement =
+    bundleComplement && !(session.shownProductIds || []).includes(bundleComplement.id) ? bundleComplement : null;
+  const systemInstruction = buildSystemPrompt(candidates, validBundleComplement, Boolean(session.secondNudgeSentAt));
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', parts: [{ text: trimmedText }] }];
 
-  // Tier order: local (canaried) -> openai -> gemini. Local is only attempted
-  // for numbers explicitly opted into localAgentTestChatIds — see config.js
-  // for why it defaults to nobody.
-  const useLocal = config.localAgentEnabled && config.localAgentTestChatIds.includes(phone);
+  // Tier order: local -> openai -> gemini. Canary allowlist (localAgentTestChatIds)
+  // was removed 2026-07-13 to roll the fine-tuned local model out to 100% of
+  // traffic; openai/gemini remain as the fallback chain if local fails.
+  const useLocal = config.localAgentEnabled;
   const callArgs = { systemInstruction, contents, responseSchema: RESPONSE_SCHEMA };
 
   const tiers = [];
@@ -308,10 +368,11 @@ async function handleMessage({ chatId, phone, text, senderName }) {
       logger.warn(`${tier.name} unavailable — trying next tier.`);
       continue;
     }
-    const candidate = validateModelOutput(sanitizeModelOutput(raw), candidates);
+    const candidate = validateModelOutput(sanitizeModelOutput(raw), candidates, validBundleComplement);
     if (candidate) {
       validated = candidate;
       providerUsed = tier.name;
+      agentStats.recordTierUsage(tier.name);
       break;
     }
     logger.warn(`${tier.name} returned a reply that failed validation — trying next tier.`);
@@ -325,6 +386,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   }
 
   if (!validated) {
+    agentStats.recordTierUsage('failed');
     // Both providers failed, or validation rejected the surviving output —
     // the bot must never go silent AND must never silently drop what the
     // customer just said. Previously this returned without touching the
@@ -347,7 +409,15 @@ async function handleMessage({ chatId, phone, text, senderName }) {
       orderStatus: 'In Progress',
       notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (محلي/OpenAI/Gemini) - تم حفظ الرسالة للمتابعة في المحاولة التالية',
     };
-    return { reply: `${MESSAGES.fallback}\n${MESSAGES.noProductDataDisclaimer}`, logEntry };
+    // Every configured tier (local + openai + gemini, whichever are enabled)
+    // failed or got rejected by validation for this turn — worth a human's
+    // attention, unlike a single tier falling through to the next one, which
+    // is routine and would make this alert too noisy to act on.
+    const adminNotification =
+      `⚠️ فشلت كل طبقات الذكاء الاصطناعي في الرد (محلي/OpenAI/Gemini)\n` +
+      `رقم العميل: ${phone}\n` +
+      `آخر رسالة: ${trimmedText}`;
+    return { reply: `${MESSAGES.fallback}\n${MESSAGES.noProductDataDisclaimer}`, logEntry, adminNotification };
   }
 
   const applied = applyValidatedOutput(session, validated, candidates);
