@@ -99,6 +99,22 @@ async function getBroadcastRecipients() {
   return candidates.slice(0, MAX_BROADCAST_RECIPIENTS);
 }
 
+// Reverse of what appendLead's phoneRowCache does: Sheets features that
+// start from a bare phone number (e.g. deliveryFollowup.js reading the
+// Leads sheet for staff-made "Delivered" edits) need the actual chatId to
+// send to — a phone alone isn't addressable via client.sendMessage() for
+// @lid privacy-mode contacts. Reuses the same resolution as
+// getBroadcastRecipients above; every phone in the Leads sheet originated
+// from a real conversation, so it will have a resolvable session here.
+async function buildPhoneToChatIdMap() {
+  const map = new Map();
+  for (const [chatId] of getAllSessions()) {
+    const phone = await resolveRealPhone(chatId);
+    if (phone) map.set(phone, chatId);
+  }
+  return map;
+}
+
 function randomBroadcastDelayMs() {
   return BROADCAST_MIN_DELAY_MS + Math.floor(Math.random() * (BROADCAST_MAX_DELAY_MS - BROADCAST_MIN_DELAY_MS));
 }
@@ -465,5 +481,6 @@ module.exports = {
   createClient,
   getStatus,
   sendMessageToChatId,
+  buildPhoneToChatIdMap,
   destroy,
 };

@@ -15,11 +15,24 @@ const PRODUCTS_SHEET_NAME = 'Products';
 const ORDER_HISTORY_SHEET_NAME = 'Order History';
 const LOCAL_PRODUCTS_PATH = path.join(__dirname, '..', '..', 'products.json');
 
-// Column J ("human interaction") already exists in the live sheet as a
-// manually-maintained staff column (e.g. "تم التواصل") predating this file's
-// involvement with it — the bot has never written to it and must not start
-// now. Conversation History goes in a new column K instead, so appendLead's
-// row-level update never touches J.
+// Column layout, current as of 2026-07-16 (verified live — see note below):
+// A-I bot-owned plain fields, J Conversation History (bot-owned: indicator
+// value + full history in the cell Note), K Follow-up Date (staff-owned
+// manual column, round-tripped unchanged by appendLead), L Alternative
+// Phone (bot-owned plain field, new).
+//
+// CORRECTION (2026-07-16): this used to also have a "human interaction"
+// column between Notes and Conversation History, predating this file's
+// involvement with it. The store owner deleted it directly in the Sheet UI
+// at some point during that day's session, which shifted every column after
+// it left by one — Conversation History moved K->J, Follow-up Date moved
+// L->K. The code wasn't updated in step, so for a window it was writing
+// Conversation History's note into what had become the Follow-up Date
+// column, silently overwriting that staff-owned field on every message from
+// a returning customer. Fixed by dropping "human interaction" here entirely
+// (respecting the deletion rather than fighting it) and remapping
+// CONVERSATION_HISTORY_COLUMN_INDEX/getExistingRowState below to the current
+// real positions. A few already-affected rows were manually repaired.
 const LEADS_HEADERS = [
   'Date',
   'Customer Name',
@@ -30,8 +43,9 @@ const LEADS_HEADERS = [
   'Order Status',
   'Delivery Address',
   'Notes',
-  'human interaction',
   'Conversation History',
+  'Follow-up Date',
+  'Alternative Phone',
 ];
 
 const PRODUCTS_HEADERS = [
@@ -275,6 +289,60 @@ async function loadPhoneRowCache() {
   }
 }
 
+// Reads the current Order Status (column G) for every Leads row — the one
+// read path in this file that goes the OTHER direction: detecting a
+// STAFF-made edit in the sheet rather than something the bot itself wrote.
+// Powers deliveryFollowup.js's polling for rows manually switched to
+// "Delivered". Returns [{ row, phone, orderStatus }, ...].
+async function scanLeadsStatuses() {
+  if (!enabled) return [];
+  try {
+    const result = await sheetsClient.spreadsheets.values.get(
+      { spreadsheetId: config.googleSheetId, range: `${LEADS_SHEET_NAME}!C2:G` },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    const rows = result.data.values || [];
+    return rows
+      .map((row, i) => ({ row: i + 2, phone: row[0], orderStatus: row[4] || '' }))
+      .filter((r) => r.phone);
+  } catch (err) {
+    logger.error('Could not scan Leads Order Status column.', err);
+    return [];
+  }
+}
+
+// Targeted single-cell write (Order Status only, column G) via the existing
+// phone -> row cache — used when the BOT itself determines a status change
+// (e.g. a customer confirming or disputing delivery), as opposed to
+// appendLead's full-row upsert. Never touches any other column.
+async function updateOrderStatus(phone, newStatus) {
+  if (!enabled) {
+    logger.warn('Google Sheets is not configured. Skipping Order Status update (WhatsApp bot continues normally).');
+    return false;
+  }
+  const row = phoneRowCache.get(phone);
+  if (!row) {
+    logger.warn(`No Leads row found for ${phone} — cannot update Order Status to "${newStatus}".`);
+    return false;
+  }
+  try {
+    await sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${LEADS_SHEET_NAME}!G${row}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[newStatus]] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    logger.success(`Order Status updated to "${newStatus}" for ${phone} (row ${row}).`);
+    return true;
+  } catch (err) {
+    logger.error(`Failed to update Order Status for ${phone}.`, err);
+    return false;
+  }
+}
+
 // Builds phone -> [{date, timestamp, productName, price}, ...] (most-recent
 // first) from every row in Order History. Unlike loadPhoneRowCache, this
 // keeps every row per phone (not just one), since the whole point is a full
@@ -363,15 +431,15 @@ function formatHistoryLine(entry) {
   return lines.join('\n');
 }
 
-// Conversation History (column K, 0-indexed 10) used to hold the full,
-// ever-growing chat transcript as the cell's VALUE — fine for a few turns,
-// but it made rows balloon to dozens of lines tall over a long-running
-// conversation and turned the sheet into a wall of text. Now the cell just
-// shows a short indicator and the full transcript lives in the cell's Note
-// (hover to read), keeping every row a single compact line while losing
-// nothing — same data, same phone-based upsert/accumulation logic, just
-// moved off the visible grid.
-const CONVERSATION_HISTORY_COLUMN_INDEX = 10; // K
+// Conversation History (column J, 0-indexed 9 — see the LEADS_HEADERS
+// correction note above) used to hold the full, ever-growing chat transcript
+// as the cell's VALUE — fine for a few turns, but it made rows balloon to
+// dozens of lines tall over a long-running conversation and turned the sheet
+// into a wall of text. Now the cell just shows a short indicator and the
+// full transcript lives in the cell's Note (hover to read), keeping every
+// row a single compact line while losing nothing — same data, same
+// phone-based upsert/accumulation logic, just moved off the visible grid.
+const CONVERSATION_HISTORY_COLUMN_INDEX = 9; // J
 const HISTORY_INDICATOR_TEXT = '📄 View History';
 // Google Sheets caps a cell Note at roughly 50,000 characters; stay well
 // under that so a long-running conversation's note write never gets
@@ -420,10 +488,11 @@ async function setConversationHistoryNote(rowNumber, historyText) {
   );
 }
 
-// Reads J (human interaction, plain value) and K's existing Note (previous
-// conversation history, NOT its value — the value is just the indicator
-// text) for a given 1-based row. spreadsheets.get (not values.get) is
-// required here since values.get never returns Notes.
+// Reads J's existing Note (previous conversation history, NOT its value —
+// the value is just the indicator text) and K's current value (Follow-up
+// Date, staff-owned, must round-trip unchanged) for a given 1-based row.
+// spreadsheets.get (not values.get) is required here since values.get never
+// returns Notes.
 async function getExistingRowState(rowNumber) {
   const result = await sheetsClient.spreadsheets.get(
     {
@@ -435,8 +504,8 @@ async function getExistingRowState(rowNumber) {
   );
   const cells = ((((result.data.sheets || [])[0] || {}).data || [])[0] || {}).rowData?.[0]?.values || [];
   return {
-    humanInteraction: (cells[0] && cells[0].formattedValue) || '',
-    previousHistory: (cells[1] && cells[1].note) || '',
+    previousHistory: (cells[0] && cells[0].note) || '',
+    followUpDate: (cells[1] && cells[1].formattedValue) || '',
   };
 }
 
@@ -514,19 +583,19 @@ async function appendLead(entry) {
 
   try {
     if (existingRow) {
-      // Read J (human interaction — staff-owned, must round-trip unchanged)
-      // and K's existing Note (previous conversation history) so the update
-      // below can't blank out J, and so the new line accumulates onto the
+      // Read K (Follow-up Date — staff-owned, must round-trip unchanged) and
+      // J's existing Note (previous conversation history) so the update
+      // below can't blank out K, and so the new line accumulates onto the
       // full history rather than replacing it.
-      const { humanInteraction, previousHistory } = await getExistingRowState(existingRow);
+      const { previousHistory, followUpDate } = await getExistingRowState(existingRow);
       const combinedHistory = previousHistory ? `${previousHistory}\n${newHistoryLine}` : newHistoryLine;
 
       await sheetsClient.spreadsheets.values.update(
         {
           spreadsheetId: config.googleSheetId,
-          range: `${LEADS_SHEET_NAME}!A${existingRow}:K${existingRow}`,
+          range: `${LEADS_SHEET_NAME}!A${existingRow}:L${existingRow}`,
           valueInputOption: 'USER_ENTERED',
-          requestBody: { values: [[...row, humanInteraction, HISTORY_INDICATOR_TEXT]] },
+          requestBody: { values: [[...row, HISTORY_INDICATOR_TEXT, followUpDate, entry.altPhone || '']] },
         },
         { timeout: REQUEST_TIMEOUT_MS }
       );
@@ -536,10 +605,10 @@ async function appendLead(entry) {
       const appendResult = await sheetsClient.spreadsheets.values.append(
         {
           spreadsheetId: config.googleSheetId,
-          range: `${LEADS_SHEET_NAME}!A:K`,
+          range: `${LEADS_SHEET_NAME}!A:L`,
           valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
-          requestBody: { values: [[...row, '', HISTORY_INDICATOR_TEXT]] },
+          requestBody: { values: [[...row, HISTORY_INDICATOR_TEXT, '', entry.altPhone || '']] },
         },
         { timeout: REQUEST_TIMEOUT_MS }
       );
@@ -571,6 +640,8 @@ module.exports = {
   appendLead,
   logOrderHistory,
   getCustomerHistory,
+  scanLeadsStatuses,
+  updateOrderStatus,
   isEnabled,
   getClient,
   recordSuccess,

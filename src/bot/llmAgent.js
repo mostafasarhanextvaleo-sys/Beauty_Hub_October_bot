@@ -1,6 +1,7 @@
 const { getSession, updateSession, STAGES } = require('./conversationMemory');
 const escalationDetector = require('./escalationDetector');
-const { buildEscalationResponse, baseLogFields } = require('./sessionLogHelpers');
+const { buildEscalationResponse, baseLogFields, resolveEarlyStageOrderStatus } = require('./sessionLogHelpers');
+const deliveryFeedbackDetector = require('./deliveryFeedbackDetector');
 const productSearch = require('./productSearch');
 const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
@@ -335,7 +336,7 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
     return {
       logEntry: {
         ...baseFields,
-        orderStatus: 'In Progress',
+        orderStatus: resolveEarlyStageOrderStatus(applied.orderData, applied.recommendedProduct),
         notes: 'تم التحويل لفريق بشري عبر الوكيل الذكي',
       },
       adminNotification,
@@ -346,7 +347,7 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
     logEntry: {
       ...baseFields,
       productName: applied.recommendedProduct ? applied.recommendedProduct.name : baseFields.productName,
-      orderStatus: 'In Progress',
+      orderStatus: resolveEarlyStageOrderStatus(applied.orderData, applied.recommendedProduct),
       notes: `نية العميل (وكيل ذكي): ${output.intent}`,
     },
     adminNotification: undefined,
@@ -372,6 +373,50 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return buildEscalationResponse(getSession(chatId), phone, trimmedText);
   }
 
+  // Deterministic, free, no API call — same reasoning as the escalation
+  // check above: whether a delivery gets confirmed or disputed decides a
+  // real Sheet status write (Completed vs Issue) and whether the admin gets
+  // paged, so it must never depend on the LLM correctly reading intent every
+  // time. Only runs when deliveryFollowup.js actually sent the "did it
+  // arrive ok?" message for this customer — never fires on ordinary chat.
+  if (session.awaitingDeliveryFeedback) {
+    const classification = deliveryFeedbackDetector.classifyDeliveryFeedback(trimmedText);
+    if (classification === 'positive') {
+      updateSession(chatId, { awaitingDeliveryFeedback: false, orderPlaced: true, stage: STAGES.CLOSED });
+      await googleSheets.updateOrderStatus(phone, 'Completed');
+      return {
+        reply: 'الحمد لله! 🥰 سعيدة إنك استلمتي طلبك وعجبك. لو احتجتي أي حاجة تانية، أنا موجودة.',
+        logEntry: {
+          ...baseLogFields(getSession(chatId), phone, trimmedText),
+          orderStatus: 'Completed',
+          notes: 'العميل أكد استلام الطلب بنجاح (بعد رسالة المتابعة التلقائية)',
+        },
+      };
+    }
+    if (classification === 'negative') {
+      updateSession(chatId, { awaitingDeliveryFeedback: false });
+      await googleSheets.updateOrderStatus(phone, 'Issue');
+      const adminNotification =
+        `⚠️ عميل أبلغ عن مشكلة في التوصيل\n` +
+        `رقم العميل: ${phone}\n` +
+        `رسالته: ${trimmedText}`;
+      return {
+        reply: 'يا خبر 💔 آسفة جداً إنك واجهتي مشكلة. هبعتلك حد من فريقنا يتواصل معاكي فوراً عشان نحل الموضوع.',
+        logEntry: {
+          ...baseLogFields(getSession(chatId), phone, trimmedText),
+          orderStatus: 'Issue',
+          notes: `العميل أبلغ عن مشكلة بعد التوصيل: ${trimmedText}`,
+        },
+        adminNotification,
+      };
+    }
+    // classification === null (ambiguous) — fall through to the normal LLM
+    // flow below. buildSystemPrompt's awaitingDeliveryFeedback param tells
+    // Sara to ask a clarifying question rather than assume either way, and
+    // session.awaitingDeliveryFeedback stays true so the next reply gets
+    // another chance at deterministic classification.
+  }
+
   const candidates = selectCandidatesForTurn(trimmedText, {
     excludeIds: session.shownProductIds || [],
     recommendedProduct: session.recommendedProduct,
@@ -384,7 +429,13 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const validBundleComplement =
     bundleComplement && !(session.shownProductIds || []).includes(bundleComplement.id) ? bundleComplement : null;
   const customerProfile = buildCustomerProfile(phone, previousUpdatedAt);
-  const systemInstruction = buildSystemPrompt(candidates, validBundleComplement, Boolean(session.secondNudgeSentAt), customerProfile);
+  const systemInstruction = buildSystemPrompt(
+    candidates,
+    validBundleComplement,
+    Boolean(session.secondNudgeSentAt),
+    customerProfile,
+    Boolean(session.awaitingDeliveryFeedback)
+  );
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', parts: [{ text: trimmedText }] }];
 
@@ -453,7 +504,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
 
     const logEntry = {
       ...baseLogFields(getSession(chatId), phone, trimmedText),
-      orderStatus: 'In Progress',
+      orderStatus: resolveEarlyStageOrderStatus(recoveredOrderData, session.recommendedProduct),
       notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (محلي/OpenAI/Gemini) - تم حفظ الرسالة للمتابعة في المحاولة التالية',
     };
     // Every configured tier (local + openai + gemini, whichever are enabled)

@@ -68,12 +68,18 @@ function getSession(chatId) {
       lastLoggedSignature: null,
       lastLoggedAt: 0,
       nudgeSentAt: null,
+      secondNudgeSentAt: null,
       orderConfirmationAttempts: 0,
       // --- LLM agent (src/bot/llmAgent.js) fields — unused/dormant in 'rules' mode ---
       orderData: { customerName: null, deliveryAddress: null, altPhone: null },
       noProgressTurns: 0,
       humanHandover: false,
       orderPlaced: false,
+      // Set by deliveryFollowup.js when the "did it arrive ok?" message is
+      // sent; llmAgent.js checks this on the customer's next reply to know
+      // whether to interpret it as delivery-confirmation feedback rather
+      // than a normal message. Cleared once a reply is classified either way.
+      awaitingDeliveryFeedback: false,
       llm: { history: [] },
       updatedAt: Date.now(),
     });

@@ -24,7 +24,7 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
 5. التعامل مع الرفض بلطف: لو العميل رفض توصية ("لا"، "مش عاوزه")، متقفليش المحادثة. اسأليه عايز إيه غير كده أو اعرضي عليه فئة تانية بأسلوب ناصح مش مُلحّ.
 6. الكلام العادي والمجاملات: لو العميل حيّاكي أو شكرك أو مدح المتجر ("السلام عليكم"، "شكراً"، "انتو احسن ناس")، ردي عليه بحرارة الأول قبل ما تسأليه محتاج مساعدة في إيه.
 7. الالتزام الصارم بالبيانات: معاكي قائمة منتجات مطابقة لرسالة العميل بس (مش الكتالوج كله). ممنوع نهائياً تخترعي منتج أو سعر مش موجود في القائمة دي، حتى لو بتقترحي روتين. لو السعر مش متاح، قولي "حد من فريق المتجر هيأكدلك السعر بالظبط قريب".
-8. إتمام الطلب: لو العميل قال "احجز" أو أكد إنه عايز يطلب، اجمعي بالظبط 3 حاجات: اسم العميل، العنوان بالتفصيل، ورقم تليفون بديل. متأكديش الطلب غير لما الثلاثة يكونوا موجودين.
+8. إتمام الطلب: لو العميل قال "احجز" أو أكد إنه عايز يطلب، اجمعي 3 حاجات: اسم العميل، العنوان بالتفصيل، ورقم تليفون بديل للمندوب (اسأليها بأسلوب زي "لو في رقم تاني بديل للمندوب عشان لو الرقم الأول مقفول؟"). اسأليها عن حاجة واحدة بس في كل رسالة — ممنوع تجمعي أكتر من سؤال في نفس الرد، حتى لو كل الحاجات لسه ناقصة. استني رد العميل على السؤال الحالي قبل ما تنتقلي للسؤال اللي بعده، وابدأي بس بالحاجة اللي لسه مش موجودة عندك (لو عندك الاسم بالفعل من كلامها قبل كده، متسأليش عنه تاني). متأكديش الطلب غير لما الثلاثة يكونوا موجودين.
 9. التحويل لموظف بشري: لو العميل طلب صراحة يتكلم مع حد ("خدمة العملاء"، "عايز أكلم بني آدم")، أو طلب دعم مباشر (live support)، أو لو حسيتي بارتباك أو غضب شديد، فعّلي علم التحويل للموظف البشري، وقوليله الجملة دي بالظبط من غير أي تغيير في صياغتها: "تقدر تتواصل مع خدمة العملاء الحقيقيين مكالمة أو واتساب على الرقم ده: 01018990503".
 10. الشفافية والإفصاح عن إنك مساعد ذكي: العميل له الحق يعرف إنه بيتكلم مع مساعد ذكي مش شخص حقيقي. في أول تحية أو تعريف بنفسك مع عميلة جديدة، عرّفي نفسك بشكل طبيعي وودود زي "أنا سارة، المساعد الذكي لـ Beauty Hub October" أو أي صياغة مشابهة. ولو العميل سأل صراحة "انتي بوت؟"، "انتي حقيقية؟"، أو أي سؤال شبيه، أكدي بصراحة ووضوح إنك مساعد ذكي من غير ما تنكري أو تتهربي من السؤال.`;
 
@@ -60,6 +60,15 @@ const RETURN_POLICY = `سياسة الاسترجاع والاستبدال — د
 - المدة: تقدر تسترجعي أو تستبدلي المنتج في خلال 14 يوم من تاريخ استلام الأوردر، من غير أي تعقيد.
 - الشرط: عشان بنحرص على صحتك وسلامتك، لازم المنتج يرجع بحالته الأصلية زي ما وصلك بالظبط — يعني الغلاف أو العلبة لسه مقفولة ومتفتحتش خالص.
 - لو وصل فيه عيب أو غلط من عندنا: طمنيها إننا بنتحمل المسؤولية بالكامل — لو المنتج وصلها فيه أي عيب، أو حصل غلط من ناحيتنا، هنبعتلها المندوب يبدله فوراً، ومن غير ما تدفع أي مليم شحن إضافي.`;
+
+// Only appended when llmAgent.js's deterministic classifier (see
+// deliveryFeedbackDetector.js) couldn't confidently read the customer's
+// reply to the automated "did it arrive ok?" message as clearly
+// positive/negative — a clear reply is handled entirely in code and never
+// reaches this prompt at all, specifically so a Sheet status change (to
+// Completed or Issue) never depends on the LLM's judgment. This note only
+// covers the genuinely ambiguous remainder.
+const AWAITING_DELIVERY_FEEDBACK_NOTE = `العميلة دي اتبعتلها رسالة بتسأل عن حالة أوردرها بعد التوصيل، وردها الأخير مكانش واضح إنه تأكيد استلام ولا فيه مشكلة. اسأليها سؤال قصير ومباشر يوضح الصورة (استلمتي الأوردر ولا لسه؟ وهو كويس ولا فيه أي مشكلة؟) قبل ما تكملي في أي حاجة تانية. ممنوع تفترضي إن الأوردر اتسلم بنجاح أو فيه مشكلة من غير ما تتأكدي — القرار ده بياخده فريقنا مش انتِ.`;
 
 function formatPrice(product) {
   return product.price ? String(product.price) : 'غير محدد بعد';
@@ -106,7 +115,7 @@ function serializeCandidates(products) {
 // the kind of arithmetic an LLM gets wrong, and there's no schema field for
 // it to be validated against anyway), just to state the real individual
 // price of each product plus the fact that 10% comes off both together.
-function buildSystemPrompt(candidates, bundleComplement, freeShippingPromised, customerProfile) {
+function buildSystemPrompt(candidates, bundleComplement, freeShippingPromised, customerProfile, awaitingDeliveryFeedback) {
   const bundleSection = bundleComplement
     ? `
 
@@ -135,12 +144,13 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
       : '';
 
   const customerProfileSection = buildCustomerProfileSection(customerProfile);
+  const deliveryFeedbackSection = awaitingDeliveryFeedback ? `\n\n${AWAITING_DELIVERY_FEEDBACK_NOTE}` : '';
 
   return `${SARA_PERSONA}
 
 ${SHIPPING_POLICY}${freeShippingSection}
 
-${RETURN_POLICY}${customerProfileSection}
+${RETURN_POLICY}${customerProfileSection}${deliveryFeedbackSection}
 
 منتجات مطابقة لرسالة العميل الحالية — استخدمي فقط من هذه القائمة، وممنوع نهائياً اختراع منتج أو سعر مش موجود هنا:
 ${serializeCandidates(candidates)}${bundleSection}

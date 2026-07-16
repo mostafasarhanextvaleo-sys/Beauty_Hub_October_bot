@@ -39,7 +39,21 @@ function baseLogFields(session, phone, text) {
     productName: session.recommendedProduct ? session.recommendedProduct.name : '',
     customerNeed: buildNeedDescription(session),
     deliveryAddress: session.deliveryAddress || '',
+    altPhone: (session.orderData && session.orderData.altPhone) || '',
   };
+}
+
+// Order Status gate (store owner's rule, 2026-07-16): never blank, never
+// "In Progress" by default. It reads "Pending" for as long as ANY of name,
+// alt phone, address, or a confirmed product is still missing, and only
+// flips to "In Progress" once all four are captured — "Completed" is a
+// separate, later transition (the customer's explicit yes) handled
+// elsewhere and untouched by this gate. Shared by every call site that logs
+// a non-Completed status (llmAgent.js's normal/handover/failure branches,
+// and the escalation response below) so the rule can't drift between them.
+function resolveEarlyStageOrderStatus(orderData, recommendedProduct) {
+  const complete = Boolean(orderData && orderData.customerName && orderData.deliveryAddress && orderData.altPhone && recommendedProduct);
+  return complete ? 'In Progress' : 'Pending';
 }
 
 // Shared across every stage/engine that checks for it: a customer explicitly
@@ -50,7 +64,7 @@ function baseLogFields(session, phone, text) {
 function buildEscalationResponse(session, phone, text) {
   const logEntry = {
     ...baseLogFields(getSession(session.chatId), phone, text),
-    orderStatus: 'In Progress',
+    orderStatus: resolveEarlyStageOrderStatus(session.orderData, session.recommendedProduct),
     notes: 'العميل طلب التحدث مع خدمة العملاء',
   };
   const adminNotification =
@@ -72,4 +86,5 @@ module.exports = {
   buildNeedDescription,
   baseLogFields,
   buildEscalationResponse,
+  resolveEarlyStageOrderStatus,
 };
