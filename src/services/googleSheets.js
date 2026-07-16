@@ -8,6 +8,11 @@ const LEADS_SHEET_NAME = 'Leads';
 const PRODUCTS_SHEET_NAME = 'Products';
 const LOCAL_PRODUCTS_PATH = path.join(__dirname, '..', '..', 'products.json');
 
+// Column J ("human interaction") already exists in the live sheet as a
+// manually-maintained staff column (e.g. "تم التواصل") predating this file's
+// involvement with it — the bot has never written to it and must not start
+// now. Conversation History goes in a new column K instead, so appendLead's
+// row-level update never touches J.
 const LEADS_HEADERS = [
   'Date',
   'Customer Name',
@@ -18,6 +23,8 @@ const LEADS_HEADERS = [
   'Order Status',
   'Delivery Address',
   'Notes',
+  'human interaction',
+  'Conversation History',
 ];
 
 const PRODUCTS_HEADERS = [
@@ -32,7 +39,6 @@ const PRODUCTS_HEADERS = [
   'In Stock',
 ];
 
-const DEDUP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 const REQUEST_TIMEOUT_MS = 15 * 1000; // never let a stalled network call block the bot
 const STARTUP_TIMEOUT_MS = 20 * 1000;
 const RETRY_INTERVAL_MS = 2 * 60 * 1000; // retry a failed/timed-out setup automatically
@@ -44,7 +50,16 @@ let enabled = false;
 let retryTimer = null;
 let lastSuccessAt = null;
 let staleWarningLogged = false;
-const recentLogs = new Map(); // phone -> { signature, timestamp }
+// Numeric sheetId of the Leads tab (distinct from its name) — required by
+// batchUpdate's updateCells requests (used to set cell Notes below), which
+// address cells via GridRange{sheetId, rowIndex, columnIndex} rather than the
+// "SheetName!A1" strings the values.* endpoints take. Resolved once in
+// ensureSheetsStructure() at startup.
+let leadsSheetId = null;
+// phone -> 1-based row number in the Leads sheet. Built once at startup by
+// reading the existing sheet, then kept in sync as rows are written, so
+// appendLead can upsert (one row per phone) instead of always inserting.
+let phoneRowCache = new Map();
 
 // Called after any successful Sheets operation (setup, lead append, product
 // fetch) so /health and the staleness monitor reflect real connectivity, not
@@ -169,8 +184,19 @@ async function ensureSheetsStructure() {
       logger.info(`Created Google Sheet tab(s): ${requests.map((r) => r.addSheet.properties.title).join(', ')}`);
     }
 
+    // Re-fetch only if a tab was just created (the Leads tab's sheetId
+    // wouldn't be in the `meta` snapshot taken before that batchUpdate ran) —
+    // otherwise reuse `meta` rather than spending an extra API call on every
+    // startup.
+    const leadsMetaSource = requests.length > 0
+      ? (await sheetsClient.spreadsheets.get({ spreadsheetId: config.googleSheetId }, { timeout: REQUEST_TIMEOUT_MS })).data
+      : meta.data;
+    const leadsSheetMeta = (leadsMetaSource.sheets || []).find((s) => s.properties.title === LEADS_SHEET_NAME);
+    if (leadsSheetMeta) leadsSheetId = leadsSheetMeta.properties.sheetId;
+
     await ensureHeaderRow(LEADS_SHEET_NAME, LEADS_HEADERS);
     await ensureProductsTabSeeded();
+    await loadPhoneRowCache();
   } catch (err) {
     logger.error('Could not verify/create Google Sheet tabs. Continuing without full Sheets integration.', err);
   }
@@ -184,8 +210,12 @@ async function ensureHeaderRow(sheetName, headers) {
       { spreadsheetId: config.googleSheetId, range },
       { timeout: REQUEST_TIMEOUT_MS }
     );
-    const values = result.data.values;
-    if (!values || values.length === 0) {
+    // Re-write (not just create) the header whenever it's shorter than the
+    // current headers list, so adding a trailing column (e.g. Conversation
+    // History) to an already-initialized sheet gets backfilled automatically
+    // on the next restart instead of silently missing its header forever.
+    const values = (result.data.values && result.data.values[0]) || [];
+    if (values.length < headers.length) {
       await sheetsClient.spreadsheets.values.update(
         {
           spreadsheetId: config.googleSheetId,
@@ -195,11 +225,127 @@ async function ensureHeaderRow(sheetName, headers) {
         },
         { timeout: REQUEST_TIMEOUT_MS }
       );
-      logger.info(`Header row created for "${sheetName}" tab.`);
+      logger.info(`Header row created/updated for "${sheetName}" tab.`);
     }
   } catch (err) {
     logger.error(`Could not verify/create header row for "${sheetName}" tab.`, err);
   }
+}
+
+// phone number lives in column C (index 2) of the Leads sheet; earliest row
+// wins for a given phone so pre-existing historical duplicates (rows written
+// before this upsert logic existed) consolidate onto their first row rather
+// than the cache flip-flopping between them.
+async function loadPhoneRowCache() {
+  if (!enabled) return;
+  try {
+    const result = await sheetsClient.spreadsheets.values.get(
+      { spreadsheetId: config.googleSheetId, range: `${LEADS_SHEET_NAME}!A2:C` },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    const rows = result.data.values || [];
+    const cache = new Map();
+    rows.forEach((row, i) => {
+      const phone = row[2];
+      if (phone && !cache.has(phone)) cache.set(phone, i + 2); // +2: 1-based, past the header row
+    });
+    phoneRowCache = cache;
+    logger.info(`Loaded ${phoneRowCache.size} existing lead row(s) from the Leads sheet for phone-number dedup.`);
+  } catch (err) {
+    logger.error('Could not load existing Leads rows for phone-number dedup. Leads will still be logged, just as new rows until the next successful load.', err);
+  }
+}
+
+// Parses a row number out of a values.append `updatedRange` like
+// "Leads!A35:J35" (or the single-cell form "Leads!A35").
+function extractRowNumber(updatedRange) {
+  const match = /![A-Z]+(\d+)/.exec(updatedRange || '');
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function formatHistoryLine(entry) {
+  const timestamp = new Date().toISOString();
+  const lines = [];
+  if (entry.customerMessage) lines.push(`[${timestamp}] العميل: ${entry.customerMessage}`);
+  if (entry.replyText) lines.push(`[${timestamp}] سارة: ${entry.replyText}`);
+  return lines.join('\n');
+}
+
+// Conversation History (column K, 0-indexed 10) used to hold the full,
+// ever-growing chat transcript as the cell's VALUE — fine for a few turns,
+// but it made rows balloon to dozens of lines tall over a long-running
+// conversation and turned the sheet into a wall of text. Now the cell just
+// shows a short indicator and the full transcript lives in the cell's Note
+// (hover to read), keeping every row a single compact line while losing
+// nothing — same data, same phone-based upsert/accumulation logic, just
+// moved off the visible grid.
+const CONVERSATION_HISTORY_COLUMN_INDEX = 10; // K
+const HISTORY_INDICATOR_TEXT = '📄 View History';
+// Google Sheets caps a cell Note at roughly 50,000 characters; stay well
+// under that so a long-running conversation's note write never gets
+// rejected outright — trim from the oldest end and keep the most recent
+// (most operationally relevant) messages.
+const MAX_NOTE_LENGTH = 45000;
+
+function truncateHistoryForNote(history) {
+  if (history.length <= MAX_NOTE_LENGTH) return history;
+  const marker = '...[سجل أقدم اتقطع للحفاظ على حجم الملاحظة]...\n';
+  return marker + history.slice(history.length - (MAX_NOTE_LENGTH - marker.length));
+}
+
+// Sets (or replaces) the Note on the Conversation History cell for a given
+// 1-based row number. Uses updateCells with fields:'note' specifically so it
+// only ever touches the Note — never the cell's displayed value, which is
+// written separately via the normal values.update/append calls in
+// appendLead() below.
+async function setConversationHistoryNote(rowNumber, historyText) {
+  if (leadsSheetId === null) {
+    logger.warn('Leads sheetId not resolved yet — skipping conversation-history note write this time (will retry on next message).');
+    return;
+  }
+  await sheetsClient.spreadsheets.batchUpdate(
+    {
+      spreadsheetId: config.googleSheetId,
+      requestBody: {
+        requests: [
+          {
+            updateCells: {
+              range: {
+                sheetId: leadsSheetId,
+                startRowIndex: rowNumber - 1,
+                endRowIndex: rowNumber,
+                startColumnIndex: CONVERSATION_HISTORY_COLUMN_INDEX,
+                endColumnIndex: CONVERSATION_HISTORY_COLUMN_INDEX + 1,
+              },
+              rows: [{ values: [{ note: truncateHistoryForNote(historyText) }] }],
+              fields: 'note',
+            },
+          },
+        ],
+      },
+    },
+    { timeout: REQUEST_TIMEOUT_MS }
+  );
+}
+
+// Reads J (human interaction, plain value) and K's existing Note (previous
+// conversation history, NOT its value — the value is just the indicator
+// text) for a given 1-based row. spreadsheets.get (not values.get) is
+// required here since values.get never returns Notes.
+async function getExistingRowState(rowNumber) {
+  const result = await sheetsClient.spreadsheets.get(
+    {
+      spreadsheetId: config.googleSheetId,
+      ranges: [`${LEADS_SHEET_NAME}!J${rowNumber}:K${rowNumber}`],
+      fields: 'sheets.data.rowData.values(formattedValue,note)',
+    },
+    { timeout: REQUEST_TIMEOUT_MS }
+  );
+  const cells = ((((result.data.sheets || [])[0] || {}).data || [])[0] || {}).rowData?.[0]?.values || [];
+  return {
+    humanInteraction: (cells[0] && cells[0].formattedValue) || '',
+    previousHistory: (cells[1] && cells[1].note) || '',
+  };
 }
 
 function productToRow(product) {
@@ -248,24 +394,9 @@ async function ensureProductsTabSeeded() {
   }
 }
 
-// Previously orderStatus+productName only, which meant a customer drip-feeding
-// order details (address, then name) across several turns within the dedup
-// window looked "unchanged" to this signature and got silently skipped — the
-// Leads sheet never saw the new info at all. customerName and deliveryAddress
-// are now part of the signature so any turn that adds/changes either one is
-// treated as new and gets its own row.
-function buildSignature(entry) {
-  return `${entry.orderStatus}|${entry.productName || ''}|${entry.customerName || ''}|${entry.deliveryAddress || ''}`;
-}
-
-function isDuplicate(phone, entry) {
-  const signature = buildSignature(entry);
-  const previous = recentLogs.get(phone);
-  if (!previous) return false;
-  const withinWindow = Date.now() - previous.timestamp < DEDUP_WINDOW_MS;
-  return withinWindow && previous.signature === signature;
-}
-
+// One row per phone number: updates the existing row (accumulating the full
+// conversation into the Conversation History column) if this phone has
+// written before, otherwise appends a new row and remembers it for next time.
 async function appendLead(entry) {
   if (!enabled) {
     logger.warn('Google Sheets is not configured. Skipping lead log (WhatsApp bot continues normally).');
@@ -273,11 +404,7 @@ async function appendLead(entry) {
   }
 
   const phone = entry.customerPhone;
-
-  if (isDuplicate(phone, entry)) {
-    logger.info(`Skipped duplicate Google Sheet log for ${phone} (no change in status/product).`);
-    return false;
-  }
+  const newHistoryLine = formatHistoryLine(entry);
 
   const row = [
     new Date().toISOString(),
@@ -291,23 +418,50 @@ async function appendLead(entry) {
     entry.notes || '',
   ];
 
+  const existingRow = phoneRowCache.get(phone);
+
   try {
-    await sheetsClient.spreadsheets.values.append(
-      {
-        spreadsheetId: config.googleSheetId,
-        range: `${LEADS_SHEET_NAME}!A:I`,
-        valueInputOption: 'USER_ENTERED',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: [row] },
-      },
-      { timeout: REQUEST_TIMEOUT_MS }
-    );
-    recentLogs.set(phone, { signature: buildSignature(entry), timestamp: Date.now() });
+    if (existingRow) {
+      // Read J (human interaction — staff-owned, must round-trip unchanged)
+      // and K's existing Note (previous conversation history) so the update
+      // below can't blank out J, and so the new line accumulates onto the
+      // full history rather than replacing it.
+      const { humanInteraction, previousHistory } = await getExistingRowState(existingRow);
+      const combinedHistory = previousHistory ? `${previousHistory}\n${newHistoryLine}` : newHistoryLine;
+
+      await sheetsClient.spreadsheets.values.update(
+        {
+          spreadsheetId: config.googleSheetId,
+          range: `${LEADS_SHEET_NAME}!A${existingRow}:K${existingRow}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [[...row, humanInteraction, HISTORY_INDICATOR_TEXT]] },
+        },
+        { timeout: REQUEST_TIMEOUT_MS }
+      );
+      await setConversationHistoryNote(existingRow, combinedHistory);
+      logger.success(`Google Sheet row updated for ${phone} (status: ${entry.orderStatus}).`);
+    } else {
+      const appendResult = await sheetsClient.spreadsheets.values.append(
+        {
+          spreadsheetId: config.googleSheetId,
+          range: `${LEADS_SHEET_NAME}!A:K`,
+          valueInputOption: 'USER_ENTERED',
+          insertDataOption: 'INSERT_ROWS',
+          requestBody: { values: [[...row, '', HISTORY_INDICATOR_TEXT]] },
+        },
+        { timeout: REQUEST_TIMEOUT_MS }
+      );
+      const newRowNumber = extractRowNumber(appendResult.data.updates && appendResult.data.updates.updatedRange);
+      if (newRowNumber) {
+        phoneRowCache.set(phone, newRowNumber);
+        await setConversationHistoryNote(newRowNumber, newHistoryLine);
+      }
+      logger.success(`Google Sheet log saved for ${phone} (status: ${entry.orderStatus}).`);
+    }
     recordSuccess();
-    logger.success(`Google Sheet log saved for ${phone} (status: ${entry.orderStatus}).`);
     return true;
   } catch (err) {
-    logger.error('Failed to append row to Google Sheet. WhatsApp bot continues normally.', err);
+    logger.error('Failed to write row to Google Sheet. WhatsApp bot continues normally.', err);
     return false;
   }
 }
@@ -330,5 +484,9 @@ module.exports = {
   isStale,
   startStalenessMonitor,
   PRODUCTS_SHEET_NAME,
+  LEADS_SHEET_NAME,
   REQUEST_TIMEOUT_MS,
+  CONVERSATION_HISTORY_COLUMN_INDEX,
+  HISTORY_INDICATOR_TEXT,
+  truncateHistoryForNote,
 };
