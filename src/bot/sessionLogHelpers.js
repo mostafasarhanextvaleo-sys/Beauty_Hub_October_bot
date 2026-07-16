@@ -59,7 +59,7 @@ function buildEscalationResponse(session, phone, text) {
     `آخر رسالة: ${text}\n` +
     `المرحلة: ${session.stage}`;
   return {
-    reply: 'تمام يا قمر 🌸 هبعتلك حد من فريقنا يتواصل معاكي حالاً.',
+    reply: 'تمام 🌸 تقدر تتواصل مع خدمة العملاء الحقيقيين مكالمة أو واتساب على الرقم ده: 01018990503',
     logEntry,
     adminNotification,
   };
