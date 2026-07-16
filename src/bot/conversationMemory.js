@@ -14,6 +14,16 @@ const STAGES = {
 
 const STATE_PATH = path.join(__dirname, '..', '..', 'sessions_state.json');
 
+// Exactly 1 full day, per the store owner's spec (2026-07-16): once a
+// customer is handed to a human agent, the bot stays completely silent for
+// this customer — no LLM replies, no automated nudges/follow-ups, nothing —
+// so the human agent has the conversation entirely to themselves.
+const HUMAN_HANDOFF_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function isHumanHandoffCooldownActive(session) {
+  return Boolean(session && session.humanHandoffAt && Date.now() - session.humanHandoffAt < HUMAN_HANDOFF_COOLDOWN_MS);
+}
+
 const sessions = new Map();
 let persistScheduled = false;
 
@@ -74,6 +84,10 @@ function getSession(chatId) {
       orderData: { customerName: null, deliveryAddress: null, altPhone: null },
       noProgressTurns: 0,
       humanHandover: false,
+      // Timestamp of the most recent human handoff (explicit request or the
+      // LLM's own judgment) — see isHumanHandoffCooldownActive above. Not
+      // cleared when the cooldown expires; a new handoff just overwrites it.
+      humanHandoffAt: null,
       orderPlaced: false,
       // Set by deliveryFollowup.js when the "did it arrive ok?" message is
       // sent; llmAgent.js checks this on the customer's next reply to know
@@ -109,4 +123,6 @@ module.exports = {
   updateSession,
   resetSession,
   getAllSessions,
+  HUMAN_HANDOFF_COOLDOWN_MS,
+  isHumanHandoffCooldownActive,
 };

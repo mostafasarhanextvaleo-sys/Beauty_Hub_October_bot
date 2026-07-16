@@ -65,6 +65,8 @@ async function checkForDeliveredOrders(sendMessageFn, resolvePhoneToChatIdFn) {
       const chatId = phoneToChatId.get(phone);
       if (!chatId) {
         logger.warn(`Order for ${phone} is marked "Delivered" but no matching WhatsApp chat was found — cannot send the follow-up.`);
+      } else if (conversationMemory.isHumanHandoffCooldownActive(conversationMemory.getSession(chatId))) {
+        logger.info(`Skipping delivery follow-up for ${phone} — customer is in the 24h human handoff cooldown.`);
       } else {
         try {
           if (sentCount > 0) await sleep(SEND_DELAY_MS);

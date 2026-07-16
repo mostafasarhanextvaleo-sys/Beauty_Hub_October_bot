@@ -369,7 +369,13 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   // Deterministic, free, no API call — an explicit ask for a human must never
   // depend on the LLM correctly reading it as a handover every time.
   if (escalationDetector.isEscalationRequest(trimmedText)) {
-    updateSession(chatId, { humanHandover: true, stage: STAGES.CLOSED, noProgressTurns: 0, orderPlaced: false });
+    updateSession(chatId, {
+      humanHandover: true,
+      humanHandoffAt: Date.now(),
+      stage: STAGES.CLOSED,
+      noProgressTurns: 0,
+      orderPlaced: false,
+    });
     return buildEscalationResponse(getSession(chatId), phone, trimmedText);
   }
 
@@ -528,6 +534,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     orderData: applied.orderData,
     noProgressTurns: applied.noProgressTurns,
     humanHandover: applied.humanHandover,
+    // Stamped fresh whenever a handover is flagged this turn, otherwise left
+    // untouched. Safe from re-extending the cooldown on every turn while
+    // already muted — the client-level cooldown check (see whatsapp/client.js)
+    // stops handleMessage from ever being called again until it expires, so
+    // this only ever fires on a genuinely new handoff.
+    humanHandoffAt: applied.humanHandover ? Date.now() : session.humanHandoffAt,
     orderPlaced: applied.orderConfirmed || session.orderPlaced,
     recommendedProduct: applied.recommendedProduct,
     shownProductIds: applied.shownProductIds,

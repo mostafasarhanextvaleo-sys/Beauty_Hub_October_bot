@@ -7,7 +7,7 @@ const googleSheets = require('../services/googleSheets');
 const { sanitizePhoneNumber, truncate, normalizeArabic, sleep } = require('../utils/helpers');
 const chatLogger = require('../utils/chatLogger');
 const { runExclusive } = require('../utils/chatLock');
-const { getSession, getAllSessions } = require('../bot/conversationMemory');
+const { getSession, getAllSessions, isHumanHandoffCooldownActive } = require('../bot/conversationMemory');
 const { getMediaNoCaptionReply, getMediaCaptionPrefix } = require('../bot/prompts');
 const adminCommands = require('../bot/adminCommands');
 const botControl = require('../bot/botControl');
@@ -375,6 +375,20 @@ function createClient() {
           const adminReply = broadcastReply !== null ? broadcastReply : await adminCommands.handleAdminMessage(message.body || '');
           await client.sendMessage(message.from, adminReply);
           logger.info(`Admin command handled for ${phone}: "${truncate(message.body || '', 120)}"`);
+          return;
+        }
+
+        // Human handoff cooldown (2026-07-16 spec): once this specific
+        // customer has been handed to a human agent, the bot goes
+        // completely silent for them for 24 hours — no LLM call, no reply,
+        // no Sheet write, nothing — so the human has the conversation
+        // entirely to themselves. WhatsApp itself still delivers the
+        // message to the human agent same as always; this only stops the
+        // BOT from acting on it. Checked before botControl.isPaused()
+        // deliberately: this is a per-customer condition, that one is
+        // global, and the more specific check should win first.
+        if (isHumanHandoffCooldownActive(getSession(message.from))) {
+          logger.info(`Ignoring message from ${phone} — human handoff cooldown active (started ${new Date(getSession(message.from).humanHandoffAt).toISOString()}).`);
           return;
         }
 
