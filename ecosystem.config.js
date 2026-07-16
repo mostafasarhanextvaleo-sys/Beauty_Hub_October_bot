@@ -11,15 +11,5 @@ module.exports = {
       // this just needs to be comfortably longer than that.
       kill_timeout: 10000,
     },
-    {
-      // Separate process from beauty-hub-bot on purpose — see the design
-      // note at the top of scripts/testRunner.js. Never touches the real
-      // WhatsApp client, only calls agent.handleMessage() directly.
-      name: 'test-runner',
-      script: 'scripts/testRunner.js',
-      args: '--loop',
-      cwd: __dirname,
-      autorestart: true,
-    },
   ],
 };
