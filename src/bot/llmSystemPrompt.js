@@ -65,6 +65,31 @@ function formatPrice(product) {
   return product.price ? String(product.price) : 'غير محدد بعد';
 }
 
+// Cap what's shown in-prompt so a very loyal repeat customer with dozens of
+// past orders doesn't balloon prompt size — the full history still lives in
+// the Order History sheet regardless (see googleSheets.js).
+const MAX_PROFILE_HISTORY_ITEMS = 5;
+
+// customerProfile: { history: [{date, productName, price}, ...] (most-recent
+// first, from googleSheets.getCustomerHistory), askFeedback: boolean } or
+// null/undefined for a brand-new customer or when Sheets is disabled.
+// askFeedback is decided in llmAgent.js (gap since their last completed
+// order, gated to only the first message of a fresh conversation episode so
+// Sara doesn't re-ask every turn) — this function only renders what it's
+// given, it never decides the trigger condition itself.
+function buildCustomerProfileSection(customerProfile) {
+  if (!customerProfile || !customerProfile.history || customerProfile.history.length === 0) return '';
+  const shown = customerProfile.history.slice(0, MAX_PROFILE_HISTORY_ITEMS);
+  const lines = shown.map((h) => `- ${h.productName || 'منتج غير محدد'} (${(h.date || '').slice(0, 10)})`).join('\n');
+  const feedbackNote = customerProfile.askFeedback
+    ? `\n\nده عميل قديم رجعلك بعد فترة مش قصيرة من آخر طلب ليه. ابدأي ردك الأول بالترحيب بيه كعميل قديم ("منورة تاني" أو أي ترحيب مشابه)، واسأليه بلطف عن رأيه في آخر منتج اشتراه (${shown[0].productName || 'المنتج اللي اتاخد المرة اللي فاتت'}) قبل ما تكمّلي في أي حاجة تانية. اسأليه السؤال ده مرة واحدة بس في أول رد، مش في كل رسالة بعد كده.`
+    : '';
+  return `
+
+ملف العميل — طلبات سابقة معروفة (استخدميها عشان تفهمي تفضيلاته وتبقي طبيعية معاه، بس ممنوع تخترعي تفاصيل زيادة عن اللي مكتوب):
+${lines}${feedbackNote}`;
+}
+
 function serializeCandidates(products) {
   if (!products || products.length === 0) {
     return 'لا توجد منتجات مطابقة لرسالة العميل حالياً في الكتالوج.';
@@ -81,7 +106,7 @@ function serializeCandidates(products) {
 // the kind of arithmetic an LLM gets wrong, and there's no schema field for
 // it to be validated against anyway), just to state the real individual
 // price of each product plus the fact that 10% comes off both together.
-function buildSystemPrompt(candidates, bundleComplement, freeShippingPromised) {
+function buildSystemPrompt(candidates, bundleComplement, freeShippingPromised, customerProfile) {
   const bundleSection = bundleComplement
     ? `
 
@@ -109,11 +134,13 @@ function buildSystemPrompt(candidates, bundleComplement, freeShippingPromised) {
 ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
       : '';
 
+  const customerProfileSection = buildCustomerProfileSection(customerProfile);
+
   return `${SARA_PERSONA}
 
 ${SHIPPING_POLICY}${freeShippingSection}
 
-${RETURN_POLICY}
+${RETURN_POLICY}${customerProfileSection}
 
 منتجات مطابقة لرسالة العميل الحالية — استخدمي فقط من هذه القائمة، وممنوع نهائياً اختراع منتج أو سعر مش موجود هنا:
 ${serializeCandidates(candidates)}${bundleSection}

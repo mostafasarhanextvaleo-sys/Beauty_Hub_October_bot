@@ -12,11 +12,39 @@ const logger = require('../utils/logger');
 const trainingDataLogger = require('../utils/trainingDataLogger');
 const agentStats = require('./agentStats');
 const routineBundles = require('./routineBundles');
+const googleSheets = require('../services/googleSheets');
 
 // Rolling window, not the full conversation — bounds prompt size/cost. ~10
 // user/model turn pairs is enough for the model to track context and avoid
 // re-asking things without re-sending the whole conversation every call.
 const MAX_HISTORY_TURNS = 20;
+
+// A conversation counts as a fresh "episode" once the session has sat idle
+// this long — used to gate the returning-customer feedback ask so it can
+// only fire on the first message of a new episode, not every turn of an
+// hours-long live conversation (session.updatedAt refreshes every message,
+// so this naturally stops re-triggering after the first hit).
+const NEW_EPISODE_GAP_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Only ask for feedback on a past order once it's had a few days to actually
+// be used — asking the day after purchase reads as impatient, not caring.
+const RETURNING_CUSTOMER_FEEDBACK_GAP_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+// customerProfile passed into buildSystemPrompt(): { history, askFeedback }
+// from googleSheets.getCustomerHistory(phone) (a pure in-memory Map lookup,
+// safe to call every message — see googleSheets.js), or null for a brand-new
+// customer. askFeedback only true on the first message of a fresh episode
+// (previousUpdatedAt, captured BEFORE this turn touches the session) whose
+// most recent completed order is old enough to plausibly have an opinion on.
+function buildCustomerProfile(phone, previousUpdatedAt) {
+  const history = googleSheets.getCustomerHistory(phone);
+  if (history.length === 0) return null;
+
+  const isNewEpisode = !previousUpdatedAt || Date.now() - previousUpdatedAt > NEW_EPISODE_GAP_MS;
+  const lastOrder = history[0];
+  const askFeedback = isNewEpisode && Date.now() - lastOrder.timestamp > RETURNING_CUSTOMER_FEEDBACK_GAP_MS;
+
+  return { history, askFeedback };
+}
 
 // Hard backstop against infinite loops, independent of what the model says —
 // mirrors the legacy rule engine's MAX_UNCLEAR_CONFIRMATION_ATTEMPTS pattern.
@@ -271,6 +299,19 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
       `رقم العميل: ${phone}\n` +
       `رقم بديل: ${applied.orderData.altPhone || 'غير محدد'}\n` +
       `العنوان: ${applied.orderData.deliveryAddress || 'غير محدد'}${recoveryNote}`;
+    // Order History (separate append-only sheet — see googleSheets.js) is
+    // what powers the "returning customer" memory feature: unlike the Leads
+    // row (upserted per-phone, so it only ever reflects the CURRENT order),
+    // this is one row per completed order, so a customer's full purchase
+    // history is actually recoverable later.
+    const orderHistoryEntry = {
+      date: new Date().toISOString(),
+      customerName: applied.orderData.customerName || baseFields.customerName,
+      phone,
+      productName: applied.recommendedProduct ? applied.recommendedProduct.name : baseFields.productName,
+      price: applied.recommendedProduct ? applied.recommendedProduct.price : '',
+      orderStatus: 'Completed',
+    };
     return {
       logEntry: {
         ...baseFields,
@@ -281,6 +322,7 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
         notes: `تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)${recoveryNote}`,
       },
       adminNotification,
+      orderHistoryEntry,
     };
   }
 
@@ -313,6 +355,10 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
 
 async function handleMessage({ chatId, phone, text, senderName }) {
   const session = getSession(chatId);
+  // Captured before anything this turn touches the session — updateSession()
+  // stamps a fresh updatedAt on every call below, so this is the one true
+  // "how long has this customer been away" reading for buildCustomerProfile.
+  const previousUpdatedAt = session.updatedAt;
   const trimmedText = (text || '').trim();
 
   if (session.nudgeSentAt) {
@@ -337,7 +383,8 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const bundleComplement = candidates[0] ? routineBundles.getBundleComplement(candidates[0].id) : null;
   const validBundleComplement =
     bundleComplement && !(session.shownProductIds || []).includes(bundleComplement.id) ? bundleComplement : null;
-  const systemInstruction = buildSystemPrompt(candidates, validBundleComplement, Boolean(session.secondNudgeSentAt));
+  const customerProfile = buildCustomerProfile(phone, previousUpdatedAt);
+  const systemInstruction = buildSystemPrompt(candidates, validBundleComplement, Boolean(session.secondNudgeSentAt), customerProfile);
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', parts: [{ text: trimmedText }] }];
 
@@ -438,7 +485,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     llm: { history: historyAfterModel },
   });
 
-  const { logEntry, adminNotification } = buildLogEntryAndNotification(
+  const { logEntry, adminNotification, orderHistoryEntry } = buildLogEntryAndNotification(
     getSession(chatId),
     phone,
     trimmedText,
@@ -450,6 +497,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     reply: validated.reply_text,
     logEntry,
     adminNotification,
+    orderHistoryEntry,
     variantId:
       providerUsed === 'local'
         ? 'llm_local_v1'

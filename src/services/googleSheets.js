@@ -6,6 +6,13 @@ const logger = require('../utils/logger');
 
 const LEADS_SHEET_NAME = 'Leads';
 const PRODUCTS_SHEET_NAME = 'Products';
+// Separate, append-only tab — never upserted-per-phone like Leads is. Leads
+// holds one row per customer reflecting their CURRENT state (overwritten on
+// every message), so it can't answer "what did this person buy over time" —
+// this tab is one row per completed order specifically so that question has
+// a real answer. Backs getCustomerHistory()/logOrderHistory() below, which
+// power the "Customer Memory & Feedback Retargeting" feature in llmAgent.js.
+const ORDER_HISTORY_SHEET_NAME = 'Order History';
 const LOCAL_PRODUCTS_PATH = path.join(__dirname, '..', '..', 'products.json');
 
 // Column J ("human interaction") already exists in the live sheet as a
@@ -39,6 +46,8 @@ const PRODUCTS_HEADERS = [
   'In Stock',
 ];
 
+const ORDER_HISTORY_HEADERS = ['Date', 'Customer Name', 'Phone', 'Product Name', 'Price', 'Order Status'];
+
 const REQUEST_TIMEOUT_MS = 15 * 1000; // never let a stalled network call block the bot
 const STARTUP_TIMEOUT_MS = 20 * 1000;
 const RETRY_INTERVAL_MS = 2 * 60 * 1000; // retry a failed/timed-out setup automatically
@@ -60,6 +69,11 @@ let leadsSheetId = null;
 // reading the existing sheet, then kept in sync as rows are written, so
 // appendLead can upsert (one row per phone) instead of always inserting.
 let phoneRowCache = new Map();
+// phone -> array of { date (ISO string), timestamp (ms), productName, price },
+// most-recent-first. Built once at startup from the Order History tab, then
+// kept in sync in-memory as new orders are logged — a per-message lookup
+// (getCustomerHistory) is a Map read, never a Sheets API call.
+let customerHistoryCache = new Map();
 
 // Called after any successful Sheets operation (setup, lead append, product
 // fetch) so /health and the staleness monitor reflect real connectivity, not
@@ -175,6 +189,9 @@ async function ensureSheetsStructure() {
     if (!existingTitles.includes(PRODUCTS_SHEET_NAME)) {
       requests.push({ addSheet: { properties: { title: PRODUCTS_SHEET_NAME } } });
     }
+    if (!existingTitles.includes(ORDER_HISTORY_SHEET_NAME)) {
+      requests.push({ addSheet: { properties: { title: ORDER_HISTORY_SHEET_NAME } } });
+    }
 
     if (requests.length > 0) {
       await sheetsClient.spreadsheets.batchUpdate(
@@ -196,7 +213,9 @@ async function ensureSheetsStructure() {
 
     await ensureHeaderRow(LEADS_SHEET_NAME, LEADS_HEADERS);
     await ensureProductsTabSeeded();
+    await ensureHeaderRow(ORDER_HISTORY_SHEET_NAME, ORDER_HISTORY_HEADERS);
     await loadPhoneRowCache();
+    await loadCustomerHistoryCache();
   } catch (err) {
     logger.error('Could not verify/create Google Sheet tabs. Continuing without full Sheets integration.', err);
   }
@@ -254,6 +273,79 @@ async function loadPhoneRowCache() {
   } catch (err) {
     logger.error('Could not load existing Leads rows for phone-number dedup. Leads will still be logged, just as new rows until the next successful load.', err);
   }
+}
+
+// Builds phone -> [{date, timestamp, productName, price}, ...] (most-recent
+// first) from every row in Order History. Unlike loadPhoneRowCache, this
+// keeps every row per phone (not just one), since the whole point is a full
+// purchase history, not a single current-state row.
+async function loadCustomerHistoryCache() {
+  if (!enabled) return;
+  try {
+    const result = await sheetsClient.spreadsheets.values.get(
+      { spreadsheetId: config.googleSheetId, range: `${ORDER_HISTORY_SHEET_NAME}!A2:F` },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    const rows = result.data.values || [];
+    const cache = new Map();
+    rows.forEach((row) => {
+      const [date, , phone, productName, price] = row;
+      if (!phone || !date) return;
+      const timestamp = new Date(date).getTime();
+      if (Number.isNaN(timestamp)) return;
+      const entry = { date, timestamp, productName: productName || '', price: price || '' };
+      const existing = cache.get(phone) || [];
+      existing.push(entry);
+      cache.set(phone, existing);
+    });
+    cache.forEach((entries) => entries.sort((a, b) => b.timestamp - a.timestamp));
+    customerHistoryCache = cache;
+    logger.info(`Loaded order history for ${customerHistoryCache.size} customer(s) from the Order History sheet.`);
+  } catch (err) {
+    logger.error('Could not load Order History for customer-memory lookups. Returning customers will not be recognized until the next successful load.', err);
+  }
+}
+
+// Appends one row per completed order (never upserted) and updates the
+// in-memory cache immediately, so the very next message from this customer
+// — even seconds later — already reflects it without another Sheets read.
+async function logOrderHistory(entry) {
+  if (!enabled) {
+    logger.warn('Google Sheets is not configured. Skipping order-history log (WhatsApp bot continues normally).');
+    return false;
+  }
+  const date = entry.date || new Date().toISOString();
+  const phone = entry.phone;
+  try {
+    await sheetsClient.spreadsheets.values.append(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${ORDER_HISTORY_SHEET_NAME}!A:F`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [[date, entry.customerName || '', phone || '', entry.productName || '', entry.price || '', entry.orderStatus || 'Completed']] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    if (phone) {
+      const timestamp = new Date(date).getTime();
+      const existing = customerHistoryCache.get(phone) || [];
+      existing.unshift({ date, timestamp, productName: entry.productName || '', price: entry.price || '' });
+      existing.sort((a, b) => b.timestamp - a.timestamp);
+      customerHistoryCache.set(phone, existing);
+    }
+    logger.success(`Order history logged for ${phone} (product: ${entry.productName || 'unknown'}).`);
+    return true;
+  } catch (err) {
+    logger.error('Failed to log order history. WhatsApp bot continues normally.', err);
+    return false;
+  }
+}
+
+// Pure in-memory lookup — safe to call on every message. Returns [] for a
+// brand-new customer or if Sheets is disabled/hasn't loaded yet.
+function getCustomerHistory(phone) {
+  return customerHistoryCache.get(phone) || [];
 }
 
 // Parses a row number out of a values.append `updatedRange` like
@@ -477,6 +569,8 @@ function getClient() {
 module.exports = {
   init,
   appendLead,
+  logOrderHistory,
+  getCustomerHistory,
   isEnabled,
   getClient,
   recordSuccess,
@@ -485,6 +579,7 @@ module.exports = {
   startStalenessMonitor,
   PRODUCTS_SHEET_NAME,
   LEADS_SHEET_NAME,
+  ORDER_HISTORY_SHEET_NAME,
   REQUEST_TIMEOUT_MS,
   CONVERSATION_HISTORY_COLUMN_INDEX,
   HISTORY_INDICATOR_TEXT,
