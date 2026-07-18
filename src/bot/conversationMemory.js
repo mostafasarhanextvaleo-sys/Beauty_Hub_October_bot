@@ -24,8 +24,35 @@ function isHumanHandoffCooldownActive(session) {
   return Boolean(session && session.humanHandoffAt && Date.now() - session.humanHandoffAt < HUMAN_HANDOFF_COOLDOWN_MS);
 }
 
+// A "did it arrive ok?" follow-up left unanswered for this long is treated as
+// stale rather than something a reply days later should still be interpreted
+// against — see isDeliveryFeedbackExpired below.
+const DELIVERY_FEEDBACK_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function isDeliveryFeedbackExpired(session) {
+  return Boolean(
+    session &&
+      session.awaitingDeliveryFeedback &&
+      session.deliveryFeedbackRequestedAt &&
+      Date.now() - session.deliveryFeedbackRequestedAt >= DELIVERY_FEEDBACK_WINDOW_MS
+  );
+}
+
 const sessions = new Map();
 let persistScheduled = false;
+
+// One-time migration (2026-07-18): session.llm.history used to be stored in
+// Gemini's dialect ({role: 'user'|'model', parts: [{text}]}) since Gemini was
+// the original agent backend. The canonical shape is now OpenAI's
+// {role: 'user'|'assistant', content} (see llmAgent.js's pushHistory) — every
+// already-persisted session predates that switch, so without this they'd feed
+// `content: undefined` into the live OpenAI/local calls on their very next
+// message.
+function migrateLegacyHistoryEntry(turn) {
+  if (typeof turn.content === 'string') return turn;
+  const text = (turn.parts || []).map((p) => p.text).join('\n');
+  return { role: turn.role === 'model' ? 'assistant' : 'user', content: text };
+}
 
 function loadPersistedSessions() {
   try {
@@ -33,16 +60,56 @@ function loadPersistedSessions() {
     const raw = fs.readFileSync(STATE_PATH, 'utf-8');
     const entries = JSON.parse(raw);
     if (!Array.isArray(entries)) return;
-    entries.forEach(([chatId, session]) => sessions.set(chatId, session));
+    entries.forEach(([chatId, session]) => {
+      if (session.llm && Array.isArray(session.llm.history)) {
+        session.llm.history = session.llm.history.map(migrateLegacyHistoryEntry);
+      }
+      sessions.set(chatId, session);
+    });
     logger.info(`Restored ${sessions.size} conversation session(s) from sessions_state.json.`);
   } catch (err) {
     logger.error('Failed to load persisted conversation sessions. Starting with empty state.', err);
   }
 }
 
+// 2026-07-18 audit: sessions never got evicted, and every message wrote the
+// entire session Map back to disk — cost grows without bound the longer the
+// store operates, purely as a function of total customers ever seen, not
+// current traffic. 30 days of no activity is well past any conversation
+// continuity value (the returning-customer memory feature reads order
+// history straight from Google Sheets independently of this — see
+// buildCustomerProfile — so evicting the live session here loses no
+// business-critical data, only in-progress conversational state that's
+// meaningless a month later anyway).
+const SESSION_EVICTION_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function evictStaleSessions() {
+  const cutoff = Date.now() - SESSION_EVICTION_THRESHOLD_MS;
+  let evicted = 0;
+  for (const [chatId, session] of sessions) {
+    if ((session.updatedAt || 0) < cutoff) {
+      sessions.delete(chatId);
+      evicted += 1;
+    }
+  }
+  if (evicted > 0) {
+    logger.info(`Evicted ${evicted} session(s) inactive for 30+ days from the in-memory store.`);
+  }
+}
+
+// Non-atomic writeFileSync directly to STATE_PATH used to mean a crash/kill
+// mid-write (OOM, host reboot, pm2 hard-stop) left a truncated/corrupt file
+// — loadPersistedSessions' catch-all would then silently start every
+// customer over from empty state, with no alert beyond a log line. Writing
+// to a temp file first and renaming is atomic on the same filesystem (POSIX
+// guarantee), so the live STATE_PATH is either the last fully-written good
+// version or the new one — never a half-written one.
 function persistSessionsNow() {
+  evictStaleSessions();
+  const tmpPath = `${STATE_PATH}.tmp`;
   try {
-    fs.writeFileSync(STATE_PATH, JSON.stringify([...sessions.entries()]));
+    fs.writeFileSync(tmpPath, JSON.stringify([...sessions.entries()]));
+    fs.renameSync(tmpPath, STATE_PATH);
   } catch (err) {
     logger.error('Failed to persist conversation sessions to disk.', err);
   }
@@ -94,6 +161,11 @@ function getSession(chatId) {
       // whether to interpret it as delivery-confirmation feedback rather
       // than a normal message. Cleared once a reply is classified either way.
       awaitingDeliveryFeedback: false,
+      // Timestamp set alongside awaitingDeliveryFeedback (deliveryFollowup.js)
+      // so a much-later reply can be recognized as stale — see
+      // isDeliveryFeedbackExpired above — instead of still being interpreted
+      // as delivery-confirmation feedback days after the fact.
+      deliveryFeedbackRequestedAt: null,
       llm: { history: [] },
       updatedAt: Date.now(),
     });
@@ -125,4 +197,6 @@ module.exports = {
   getAllSessions,
   HUMAN_HANDOFF_COOLDOWN_MS,
   isHumanHandoffCooldownActive,
+  DELIVERY_FEEDBACK_WINDOW_MS,
+  isDeliveryFeedbackExpired,
 };

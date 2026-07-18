@@ -179,16 +179,36 @@ function productNameAppearsInReply(product, replyText) {
   return normalizeArabicText(replyText).includes(arabicName);
 }
 
-// A turn's candidates come from searching THAT turn's raw text alone (see
-// productSearch.searchProducts — semantic first, keyword-match fallback) — a
-// message like "تمام، احجزيلي الأوردر" (order confirmation, no product name
-// repeated) matches nothing and returns zero candidates. The model still
-// needs to reference the item actually being ordered, so the
-// currently-recommended product is always folded back in regardless of
-// whether this turn's text happens to search-match it — without this,
-// order-confirmation turns get validated-rejected for referencing "a product
-// outside this turn's candidate list" when that product is exactly the one
-// from a prior turn the model (correctly) still has in mind.
+// 2026-07-18 audit: candidates used to come from searching THAT turn's raw
+// text alone, with nothing carried over from earlier in the same
+// consultation. Confirmed empirically to break exactly the moment the
+// 4-step consultation (llmSystemPrompt.js rule 2) reaches its last step: a
+// bare budget answer like "200 جنيه بس" matched unrelated products purely on
+// an incidental "200 مل" size spec, and a natural "اقتصادي"/"حابة حاجة رخيصة"
+// reply returned ZERO candidates — right at the turn the customer is most
+// ready to buy, forcing rule 8's "the team will confirm availability"
+// fallback instead of the recommendation the consultation was building
+// toward. Folding in the last couple of user turns (already sitting in
+// session.llm.history — no new state needed) re-introduces the skin-type/
+// problem words the bare final answer alone doesn't carry.
+const SEARCH_QUERY_HISTORY_WINDOW = 2;
+
+function buildSearchQuery(session, currentText) {
+  const history = (session.llm && session.llm.history) || [];
+  const recentUserTurns = history
+    .filter((turn) => turn.role === 'user')
+    .slice(-SEARCH_QUERY_HISTORY_WINDOW)
+    .map((turn) => turn.content);
+  return [...recentUserTurns, currentText].filter(Boolean).join(' ');
+}
+
+// The model still needs to reference the item actually being ordered even on
+// a turn whose (now rolling-window) search text doesn't happen to match it,
+// so the currently-recommended product is always folded back in regardless
+// — without this, order-confirmation turns get validated-rejected for
+// referencing "a product outside this turn's candidate list" when that
+// product is exactly the one from a prior turn the model (correctly) still
+// has in mind.
 async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null } = {}) {
   const candidates = await productSearch.searchProducts(text, { excludeIds });
   if (recommendedProduct && !candidates.some((p) => p.id === recommendedProduct.id)) {
@@ -648,7 +668,11 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return handleOrderStatusInquiry({ chatId, phone, trimmedText, session, history: (session.llm && session.llm.history) || [] });
   }
 
-  const candidates = await selectCandidatesForTurn(trimmedText, {
+  // Rolling-window query (see buildSearchQuery above) — not bare trimmedText
+  // — so a terse final-step answer in the consultation still carries the
+  // skin-type/problem context from the turns just before it.
+  const searchQuery = buildSearchQuery(session, trimmedText);
+  const candidates = await selectCandidatesForTurn(searchQuery, {
     excludeIds: session.shownProductIds || [],
     recommendedProduct: session.recommendedProduct,
   });

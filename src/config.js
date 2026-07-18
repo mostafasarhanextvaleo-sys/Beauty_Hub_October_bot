@@ -8,11 +8,27 @@ const config = {
     process.env.GOOGLE_APPLICATION_CREDENTIALS || './credentials.json',
   aiProvider: (process.env.AI_PROVIDER || 'none').toLowerCase(),
   openaiApiKey: process.env.OPENAI_API_KEY || '',
+  // 2026-07-18 audit: openaiService.js/embeddingService.js had no timeout at
+  // all despite being the tiers actually live in production — a hung fetch
+  // blocked a customer's entire conversation indefinitely and never reached
+  // the "all tiers failed" admin alert. Mirrors localTimeoutMs's existing
+  // pattern below.
+  openaiTimeoutMs: parseInt(process.env.OPENAI_TIMEOUT_MS, 10) || 20000,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   sessionPath: process.env.SESSION_PATH || './.wwebjs_auth',
   storeName: 'Beauty Hub October',
   cartNudgeDelayHours: parseFloat(process.env.CART_NUDGE_DELAY_HOURS) || 3,
+  // Second, sweeter nudge if the first one got no reply — measured from
+  // nudgeSentAt (when the FIRST nudge went out), not from the original idle
+  // time, so it's genuinely "24h after we last reached out", not "24h after
+  // they went idle" (which the first nudge may have already covered).
+  cartNudgeSecondDelayHours: parseFloat(process.env.CART_NUDGE_SECOND_DELAY_HOURS) || 24,
   adminWhatsappNumber: (process.env.ADMIN_WHATSAPP_NUMBER || '').trim(),
+  // Shared secret required in the X-Reload-Token header to call
+  // GET /reload-products — that endpoint triggers a Google Sheets API call,
+  // so without this it's an open DoS/quota-exhaustion surface on anyone who
+  // can reach the health-server port.
+  reloadToken: (process.env.RELOAD_TOKEN || '').trim(),
   // 'rules' = existing STAGES state machine (default, proven on live traffic).
   // 'llm' = free-form Gemini-driven agent (src/bot/llmAgent.js). Switching back
   // to 'rules' is an instant rollback if the LLM agent misbehaves on real traffic.
@@ -53,6 +69,12 @@ const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+
+  // 2026-07-18: productSearch.js's primary matching path, backed by OpenAI
+  // embeddings (src/services/embeddingService.js) — 'false' is an instant
+  // rollback to the original keyword-only matcher if semantic search ever
+  // misbehaves on real traffic, same rollback pattern as the flags above.
+  semanticSearchEnabled: (process.env.SEMANTIC_SEARCH_ENABLED || 'true').toLowerCase() !== 'false',
 };
 
 config.credentialsAbsolutePath = path.isAbsolute(config.googleApplicationCredentials)

@@ -47,6 +47,21 @@ function nowIsoDate() {
   return new Date().toISOString();
 }
 
+// Shared timeout-race helper — previously duplicated separately in
+// geminiService.js/localService.js/adminCommands.js/tagProductsSkinType.js.
+// Hoisted here (2026-07-18 audit) so openaiService.js/embeddingService.js —
+// the two hot-path services that had NO timeout at all despite being the
+// tiers actually live in production — can reuse the exact same mechanism
+// instead of a fifth copy. Rejects with a labeled error after `ms`; callers
+// already treat any rejection as "this tier failed, try the next one."
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms: ${label}`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 module.exports = {
   normalizeArabic,
   containsAny,
@@ -55,4 +70,5 @@ module.exports = {
   sanitizePhoneNumber,
   truncate,
   nowIsoDate,
+  withTimeout,
 };

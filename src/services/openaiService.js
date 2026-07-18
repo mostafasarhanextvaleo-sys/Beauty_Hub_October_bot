@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { withTimeout } = require('../utils/helpers');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -11,21 +12,25 @@ async function generateReply(systemPrompt, userMessage) {
   }
 
   try {
-    const response = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        temperature: 0.6,
+    const response = await withTimeout(
+      fetch(OPENAI_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          temperature: 0.6,
+        }),
       }),
-    });
+      config.openaiTimeoutMs,
+      'OpenAI /chat/completions (generateReply)'
+    );
 
     if (!response.ok) {
       const errText = await response.text();
@@ -41,12 +46,11 @@ async function generateReply(systemPrompt, userMessage) {
   }
 }
 
-// Fallback provider for the LLM agent (src/bot/llmAgent.js) when Gemini is
-// unavailable. Mirrors geminiService.generateStructuredReply's signature
-// exactly (same `contents` shape, same responseSchema object) so llmAgent.js
-// can call either provider interchangeably without a translation layer of
-// its own. Converts Gemini-style contents ({role:'user'|'model', parts:[{text}]})
-// to OpenAI's messages format ({role:'system'|'user'|'assistant', content}).
+// Primary provider for the LLM agent (src/bot/llmAgent.js). `contents` is
+// already the canonical {role: 'user'|'assistant', content} shape llmAgent.js
+// stores in session.llm.history, so it's exactly OpenAI's messages format
+// with the system turn prepended — no translation layer needed here (compare
+// geminiService.js, the one tier whose dialect actually differs).
 // Never throws — returns null on any failure, same convention as generateReply.
 async function generateStructuredReply({ systemInstruction, contents, responseSchema }) {
   if (!config.openaiApiKey) {
@@ -54,31 +58,29 @@ async function generateStructuredReply({ systemInstruction, contents, responseSc
     return null;
   }
 
-  const messages = [
-    { role: 'system', content: systemInstruction },
-    ...contents.map((turn) => ({
-      role: turn.role === 'model' ? 'assistant' : 'user',
-      content: (turn.parts || []).map((p) => p.text).join('\n'),
-    })),
-  ];
+  const messages = [{ role: 'system', content: systemInstruction }, ...contents];
 
   try {
-    const response = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages,
-        temperature: 0.4,
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: 'agent_reply', schema: responseSchema, strict: true },
+    const response = await withTimeout(
+      fetch(OPENAI_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.openaiApiKey}`,
         },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages,
+          temperature: 0.4,
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'agent_reply', schema: responseSchema, strict: true },
+          },
+        }),
       }),
-    });
+      config.openaiTimeoutMs,
+      'OpenAI /chat/completions (generateStructuredReply)'
+    );
 
     if (!response.ok) {
       const errText = await response.text();
