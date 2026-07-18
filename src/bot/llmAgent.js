@@ -1,7 +1,9 @@
-const { getSession, updateSession, STAGES } = require('./conversationMemory');
+const { getSession, updateSession, STAGES, isDeliveryFeedbackExpired } = require('./conversationMemory');
 const escalationDetector = require('./escalationDetector');
+const { containsAny, containsWord } = require('../utils/helpers');
 const { buildEscalationResponse, baseLogFields, resolveEarlyStageOrderStatus } = require('./sessionLogHelpers');
 const deliveryFeedbackDetector = require('./deliveryFeedbackDetector');
+const orderStatusDetector = require('./orderStatusDetector');
 const productSearch = require('./productSearch');
 const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
@@ -15,10 +17,15 @@ const agentStats = require('./agentStats');
 const routineBundles = require('./routineBundles');
 const googleSheets = require('../services/googleSheets');
 
-// Rolling window, not the full conversation — bounds prompt size/cost. ~10
-// user/model turn pairs is enough for the model to track context and avoid
-// re-asking things without re-sending the whole conversation every call.
-const MAX_HISTORY_TURNS = 20;
+// Rolling window, not the full conversation — bounds prompt size/cost/latency
+// so a long-running customer's per-message cost doesn't keep growing forever
+// and can never exceed the model's context window. ~30 user/model turn pairs
+// is a generous amount of real memory for typical chat lengths here; the full,
+// untruncated history is still captured separately in Google Sheets'
+// Conversation History note and in training-data/conversations.jsonl (see
+// trainingDataLogger.js) for the 2-month data-gathering goal, regardless of
+// what's replayed into the live prompt.
+const MAX_HISTORY_TURNS = 60;
 
 // A conversation counts as a fresh "episode" once the session has sat idle
 // this long — used to gate the returning-customer feedback ask so it can
@@ -51,8 +58,58 @@ function buildCustomerProfile(phone, previousUpdatedAt) {
 // mirrors the legacy rule engine's MAX_UNCLEAR_CONFIRMATION_ATTEMPTS pattern.
 const MAX_NO_PROGRESS_TURNS = 3;
 
+// 2026-07-18: deterministic ground-truth guard on SPECIALIST_REFERRAL — the
+// same "trust but verify" principle validateModelOutput already applies to
+// prices and product ids (never trust the model's own claim, check it
+// against real data), extended to the human-handover decision. sim_run3/
+// sim_run4, and a live harness re-test of the llmSystemPrompt.js prompt-only
+// fix (explicit top-of-prompt rule + few-shot examples), both showed
+// gpt-4o-mini still escalating a bare "حبوب" or "عندي حبوب بتضايقني" reply to
+// SPECIALIST_REFERRAL and skipping any product recommendation — prompt
+// wording alone doesn't reliably override this model's caution bias on skin/
+// health topics for a single, context-free word. This backstop never trusts
+// handover_reason==="SPECIALIST_REFERRAL" at face value; see
+// applyValidatedOutput below.
+//
+// 'دم' (blood) and 'ألم' (pain) are checked as whole words (containsWord),
+// not substring — unlike the rest of this list they're short roots that
+// collide with extremely common, unrelated words once normalizeArabic
+// (helpers.js) folds أ/إ/آ all down to plain ا: 'ألم' normalizes to 'الم',
+// which is a literal substring of 'المتاح' ("available") — confirmed live
+// when a persona's "ايه المتاح؟" false-matched this keyword, suppressed the
+// guard, and let a bare escalation slip through uncaught. 'دم' has the same
+// problem with 'خدمة' ("خدمة العملاء", said constantly by customers). 'وجع'
+// is added alongside the literal "بتوجعني" so a genuine pain report still
+// matches across the many Arabic verb conjugations (وجعني/ووجعاني/هتوجعني/etc.)
+// a single fixed spelling would miss — under-matching here would let a real
+// severe case slip through as "routine".
+const SPECIALIST_REFERRAL_KEYWORDS = [
+  'كيسي', 'كيسية', 'ملتهب', 'ملتهبة', 'تورم', 'نزيف',
+  'دكتور', 'دكتورة', 'متخصص', 'وجع', 'بتوجعني',
+];
+const SPECIALIST_REFERRAL_WORD_KEYWORDS = ['دم', 'ألم'];
+
+function hasClinicalSeverityKeyword(text) {
+  return containsAny(text, SPECIALIST_REFERRAL_KEYWORDS) || containsWord(text, SPECIALIST_REFERRAL_WORD_KEYWORDS);
+}
+
+// Replaces the model's own (rejected) hand-off line when SPECIALIST_REFERRAL
+// is downgraded — never show the customer a specialist hand-off message for
+// what code has determined is actually a routine case. Deliberately generic
+// and product-free: rule 8 forbids inventing a product outside this turn's
+// candidate list, and there's no model-authored alternative reply_text safe
+// to trust here, so this keeps the conversation open for a real
+// recommendation on the next turn instead of dead-ending on a false handover.
+const NORMAL_CONSULTATION_FALLBACK =
+  'تمام، ده موضوع عادي جدًا وهساعدك فيه زي أي استشارة تانية 💛 لو حابة تضيفي أي تفاصيل زي روتين العناية الحالي أو الميزانية التقريبية، هقدر أرشحلك أنسب منتج من عندنا فورًا.';
+
+// Canonical in-memory shape is the OpenAI chat format directly —
+// {role: 'user'|'assistant', content: string} — since OpenAI is now the
+// primary tier. localService.js/openaiService.js consume this as-is;
+// geminiService.js is the only tier with a different dialect, so it converts
+// on its own side (toGeminiContents) rather than everyone converting for it.
 function pushHistory(history, role, text) {
-  return [...history, { role, parts: [{ text }] }].slice(-MAX_HISTORY_TURNS);
+  return [...history, { role, content: text }].slice(-MAX_HISTORY_TURNS);
 }
 
 // A phone number's shape (digit-heavy, fixed rough length) is distinctive
@@ -122,17 +179,18 @@ function productNameAppearsInReply(product, replyText) {
   return normalizeArabicText(replyText).includes(arabicName);
 }
 
-// A turn's candidates come from keyword-searching THAT turn's raw text alone
-// (see productSearch.searchProducts) — a message like "تمام، احجزيلي الأوردر"
-// (order confirmation, no product name repeated) matches nothing and returns
-// zero candidates. The model still needs to reference the item actually being
-// ordered, so the currently-recommended product is always folded back in
-// regardless of whether this turn's text happens to search-match it — without
-// this, order-confirmation turns get validated-rejected for referencing "a
-// product outside this turn's candidate list" when that product is exactly
-// the one from a prior turn the model (correctly) still has in mind.
-function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null } = {}) {
-  const candidates = productSearch.searchProducts(text, { excludeIds });
+// A turn's candidates come from searching THAT turn's raw text alone (see
+// productSearch.searchProducts — semantic first, keyword-match fallback) — a
+// message like "تمام، احجزيلي الأوردر" (order confirmation, no product name
+// repeated) matches nothing and returns zero candidates. The model still
+// needs to reference the item actually being ordered, so the
+// currently-recommended product is always folded back in regardless of
+// whether this turn's text happens to search-match it — without this,
+// order-confirmation turns get validated-rejected for referencing "a product
+// outside this turn's candidate list" when that product is exactly the one
+// from a prior turn the model (correctly) still has in mind.
+async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null } = {}) {
+  const candidates = await productSearch.searchProducts(text, { excludeIds });
   if (recommendedProduct && !candidates.some((p) => p.id === recommendedProduct.id)) {
     return [recommendedProduct, ...candidates];
   }
@@ -234,7 +292,7 @@ function validateModelOutput(output, candidates, bundleComplement = null) {
 
 // Code, never the model, decides order completion and human handover — both
 // are re-derived here from validated fields rather than trusted as asserted.
-function applyValidatedOutput(session, output, candidates) {
+function applyValidatedOutput(session, output, candidates, text) {
   const prevOrder = session.orderData || {};
   const orderData = {
     customerName: output.order_data.customer_name || prevOrder.customerName || null,
@@ -252,7 +310,45 @@ function applyValidatedOutput(session, output, candidates) {
   const allFieldsPresent = Boolean(orderData.customerName && orderData.deliveryAddress && orderData.altPhone);
   const orderConfirmed = allFieldsPresent && output.order_data.confirmed === true;
 
-  const humanHandover = output.human_handover === true || noProgressTurns >= MAX_NO_PROGRESS_TURNS;
+  let humanHandover = output.human_handover === true || noProgressTurns >= MAX_NO_PROGRESS_TURNS;
+  // Only trusted when the MODEL itself asserted the handover (persona rule
+  // 10) — the noProgressTurns backstop above can also set humanHandover=true
+  // with no corresponding handover_reason from the model, which must fall
+  // through to the generic "handed to a human" logging, not be mistaken for
+  // a specialist referral.
+  let handoverReason = output.human_handover === true ? output.handover_reason || null : null;
+
+  // Deterministic ground-truth check (see hasClinicalSeverityKeyword above) —
+  // never trust a SPECIALIST_REFERRAL assertion at face value. If the
+  // customer's actual message has no real clinical severity signal, this is
+  // almost certainly the over-caution bug (bare "حبوب", "عندي حبوب
+  // بتضايقني", etc.), not a genuine severe/cystic case — downgrade back to a
+  // normal consultation rather than handing off.
+  // Ground truth is the actual text the customer is about to receive, not
+  // just the structured flags — a live re-test surfaced calls where the
+  // model wrote the exact SPECIALIST_REFERRAL sentence into reply_text while
+  // leaving human_handover=false (an internally inconsistent structured
+  // output), which would slip straight past a guard that only checked
+  // handoverReason: humanHandover would already be false, so nothing would
+  // look like it needed downgrading, yet the customer would still be told
+  // "you need a specialist" via reply_text alone. Checking reply_text
+  // directly (persona rule 10-b requires the model reproduce this sentence
+  // verbatim, so matching on it is reliable) closes that gap regardless of
+  // whether the model's own fields agree with its own prose.
+  const SPECIALIST_REFERRAL_REPLY_MARKER = 'محتاجة متابعة من فريقنا المتخصص';
+  const assertsSpecialistReferral =
+    handoverReason === 'SPECIALIST_REFERRAL' ||
+    (typeof output.reply_text === 'string' && output.reply_text.includes(SPECIALIST_REFERRAL_REPLY_MARKER));
+
+  let specialistReferralDowngraded = false;
+  if (assertsSpecialistReferral && !hasClinicalSeverityKeyword(text)) {
+    logger.warn(
+      `LLM agent asserted SPECIALIST_REFERRAL (handover_reason and/or reply_text) with no clinical severity keyword in the customer's message ("${text}") — downgrading to a normal consultation instead of handing off.`
+    );
+    humanHandover = false;
+    handoverReason = null;
+    specialistReferralDowngraded = true;
+  }
 
   let recommendedProduct = session.recommendedProduct || null;
   let shownProductIds = session.shownProductIds || [];
@@ -272,7 +368,17 @@ function applyValidatedOutput(session, output, candidates) {
   else if (recommendedProduct) stage = STAGES.RECOMMENDED;
   else stage = STAGES.AWAIT_CATEGORY;
 
-  return { orderData, orderConfirmed, humanHandover, stage, recommendedProduct, shownProductIds, noProgressTurns };
+  return {
+    orderData,
+    orderConfirmed,
+    humanHandover,
+    handoverReason,
+    stage,
+    recommendedProduct,
+    shownProductIds,
+    noProgressTurns,
+    specialistReferralDowngraded,
+  };
 }
 
 function buildLogEntryAndNotification(session, phone, text, output, applied) {
@@ -328,6 +434,28 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
   }
 
   if (applied.humanHandover) {
+    // "SPECIALIST_REFERRAL" (persona rule 10-b: severe/cystic acne or an
+    // explicit ask for a dermatologist) gets its own Order Status —
+    // deliberately NOT "Issue", which staff already use specifically for a
+    // confirmed delivery problem (see deliveryFeedbackDetector.js's
+    // 'Issue' write). Conflating the two would make staff filtering by
+    // "Issue" surface skin-consultation referrals mixed in with real
+    // delivery complaints.
+    if (applied.handoverReason === 'SPECIALIST_REFERRAL') {
+      const adminNotification =
+        `🩺 حالة تحتاج متابعة متخصصة (وكيل ذكي)\n` +
+        `رقم العميل: ${phone}\n` +
+        `آخر رسالة: ${text}`;
+      return {
+        logEntry: {
+          ...baseFields,
+          orderStatus: 'Needs Specialist',
+          notes: 'العميلة وصفت حالة جلدية تحتاج متابعة متخصصة - تم تحويلها لفريق Beauty Hub October',
+        },
+        adminNotification,
+      };
+    }
+
     const adminNotification =
       `🆘 الوكيل الذكي حوّل المحادثة لفريق بشري\n` +
       `رقم العميل: ${phone}\n` +
@@ -351,6 +479,74 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
       notes: `نية العميل (وكيل ذكي): ${output.intent}`,
     },
     adminNotification: undefined,
+  };
+}
+
+// Maps the Leads sheet's live Order Status to a customer-facing reply. Status
+// semantics here match resolveEarlyStageOrderStatus (sessionLogHelpers.js)
+// exactly, since that's what actually writes these values under AGENT_MODE=llm:
+// 'Pending' = order data (name/address/alt phone/product) still being
+// collected, no confirmed order yet; 'In Progress' = all of that IS collected
+// but the customer hasn't given final confirmation yet — genuinely "your
+// order is basically ready, just needs your yes"; 'Completed' = confirmed;
+// 'Issue' = a delivery problem was reported; 'Needs Specialist' = the LLM
+// referred the customer to the store's team over a severe/cystic skin
+// condition or an explicit ask for a dermatologist (persona rule 10-b,
+// llmSystemPrompt.js) — deliberately distinct from 'Issue' since it's a
+// pre-purchase consult referral, not a delivery complaint; 'Delivered' is
+// staff-set directly in the Sheet UI (see deliveryFollowup.js), never
+// written by the bot itself. 'Cancelled' can only appear on rows from
+// before AGENT_MODE=llm went live (the rules engine sets it; the LLM agent
+// never does).
+function buildOrderStatusReply(statusInfo) {
+  if (!statusInfo || !statusInfo.orderStatus || statusInfo.orderStatus === 'Pending') {
+    return 'لسه مفيش طلب اتأكد منك خالص يا قمر 🌸 لو حابة تطلبي أو تعرفي منتجاتنا قوليلي محتاجة ايه وأنا هساعدك.';
+  }
+
+  const productNote = statusInfo.productName ? ` (${statusInfo.productName})` : '';
+
+  switch (statusInfo.orderStatus) {
+    case 'In Progress':
+      return `بياناتك اتسجلت وطلبك${productNote} جاهز، محتاجين بس تأكيدك النهائي عشان نبدأ التجهيز 📝 تحبي تأكدي الطلب دلوقتي؟`;
+    case 'Completed':
+      return `تم تأكيد طلبك${productNote} وهو بيتجهز للشحن دلوقتي 📦 هيوصلك قريب ان شاء الله.`;
+    case 'Delivered':
+      return `طلبك${productNote} وصل واتسلم بالفعل ✅ لو في أي حاجة تانية محتاجة مساعدة فيها قوليلي.`;
+    case 'Issue':
+      return `في مشكلة اتسجلت على طلبك${productNote} وفريقنا هيتواصل معاكي في أقرب وقت عشان نحلها 🙏`;
+    case 'Needs Specialist':
+      return 'فريق Beauty Hub October هيتابع معاكي بخصوص استشارتك في أقرب وقت 🌸 لو حابة تسألي حاجة تانية دلوقتي، أنا هنا.';
+    case 'Cancelled':
+      return 'الطلب ده كان اتلغى. لو حابة تطلبي تاني قوليلي محتاجة ايه وهساعدك.';
+    default:
+      // Unknown/unexpected status value — don't guess, don't go silent.
+      return 'مش قادرة أجيب حالة طلبك بالظبط دلوقتي، هبعتلك حد من فريقنا يتأكد منك في أقرب وقت.';
+  }
+}
+
+// Deterministic order-status lookup (see orderStatusDetector.js) — reads the
+// live Sheet rather than anything cached in the session, since Order Status
+// can change from a staff edit (e.g. "Delivered") that never touches session
+// state. Participates in history/logging exactly like any other turn (so the
+// next AI call still has full context) but never calls an AI tier itself.
+async function handleOrderStatusInquiry({ chatId, phone, trimmedText, history }) {
+  const statusInfo = await googleSheets.getCurrentOrderStatus(phone);
+  const reply = buildOrderStatusReply(statusInfo);
+
+  const historyAfterUser = pushHistory(history, 'user', trimmedText);
+  const historyAfterModel = pushHistory(historyAfterUser, 'assistant', reply);
+  updateSession(chatId, { llm: { history: historyAfterModel } });
+
+  return {
+    reply,
+    logEntry: {
+      ...baseLogFields(getSession(chatId), phone, trimmedText),
+      // Passing back exactly what was just read (never a guessed/different
+      // value) keeps this a no-op for the column on appendLead's upsert —
+      // it can never clobber a staff-set status like "Delivered".
+      orderStatus: (statusInfo && statusInfo.orderStatus) || 'Pending',
+      notes: `العميل سأل عن حالة الطلب - تم الرد تلقائياً من بيانات الشيت (${statusInfo ? statusInfo.orderStatus || 'غير محدد' : 'لا يوجد طلب مسجل'})`,
+    },
   };
 }
 
@@ -379,6 +575,14 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return buildEscalationResponse(getSession(chatId), phone, trimmedText);
   }
 
+  // A "did it arrive ok?" follow-up left unanswered for 48h+ is stale — a
+  // reply days later (e.g. an unrelated new order) must not be misread as
+  // delivery-confirmation feedback and silently closed as Completed/Issue.
+  // Expire it and fall through to normal handling below.
+  if (isDeliveryFeedbackExpired(session)) {
+    updateSession(chatId, { awaitingDeliveryFeedback: false, deliveryFeedbackRequestedAt: null });
+  }
+
   // Deterministic, free, no API call — same reasoning as the escalation
   // check above: whether a delivery gets confirmed or disputed decides a
   // real Sheet status write (Completed vs Issue) and whether the admin gets
@@ -388,7 +592,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   if (session.awaitingDeliveryFeedback) {
     const classification = deliveryFeedbackDetector.classifyDeliveryFeedback(trimmedText);
     if (classification === 'positive') {
-      updateSession(chatId, { awaitingDeliveryFeedback: false, orderPlaced: true, stage: STAGES.CLOSED });
+      updateSession(chatId, {
+        awaitingDeliveryFeedback: false,
+        deliveryFeedbackRequestedAt: null,
+        orderPlaced: true,
+        stage: STAGES.CLOSED,
+      });
       await googleSheets.updateOrderStatus(phone, 'Completed');
       return {
         reply: 'الحمد لله! 🥰 سعيدة إنك استلمتي طلبك وعجبك. لو احتجتي أي حاجة تانية، أنا موجودة.',
@@ -400,7 +609,15 @@ async function handleMessage({ chatId, phone, text, senderName }) {
       };
     }
     if (classification === 'negative') {
-      updateSession(chatId, { awaitingDeliveryFeedback: false });
+      // A confirmed delivery issue hands the customer to a human immediately
+      // (2026-07-18 spec) — same 24h cooldown as an explicit escalation
+      // request above, so the bot goes silent and the admin team handles it
+      // without automated interference.
+      updateSession(chatId, {
+        awaitingDeliveryFeedback: false,
+        deliveryFeedbackRequestedAt: null,
+        humanHandoffAt: Date.now(),
+      });
       await googleSheets.updateOrderStatus(phone, 'Issue');
       const adminNotification =
         `⚠️ عميل أبلغ عن مشكلة في التوصيل\n` +
@@ -423,7 +640,15 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // another chance at deterministic classification.
   }
 
-  const candidates = selectCandidatesForTurn(trimmedText, {
+  // Deterministic, free, no API call — same reasoning as escalation/delivery-
+  // feedback above: "where's my order" must answer from the live Sheet
+  // status, never from whatever the LLM guesses or half-remembers from
+  // conversation history. Runs before any AI tier so it never costs a token.
+  if (orderStatusDetector.isOrderStatusInquiry(trimmedText)) {
+    return handleOrderStatusInquiry({ chatId, phone, trimmedText, session, history: (session.llm && session.llm.history) || [] });
+  }
+
+  const candidates = await selectCandidatesForTurn(trimmedText, {
     excludeIds: session.shownProductIds || [],
     recommendedProduct: session.recommendedProduct,
   });
@@ -443,7 +668,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     Boolean(session.awaitingDeliveryFeedback)
   );
   const history = (session.llm && session.llm.history) || [];
-  const contents = [...history, { role: 'user', parts: [{ text: trimmedText }] }];
+  const contents = [...history, { role: 'user', content: trimmedText }];
 
   // Tier order: local -> openai -> gemini. Canary allowlist (localAgentTestChatIds)
   // was removed 2026-07-13 to roll the fine-tuned local model out to 100% of
@@ -524,10 +749,19 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return { reply: `${MESSAGES.fallback}\n${MESSAGES.noProductDataDisclaimer}`, logEntry, adminNotification };
   }
 
-  const applied = applyValidatedOutput(session, validated, candidates);
+  const applied = applyValidatedOutput(session, validated, candidates, trimmedText);
+
+  // A downgraded SPECIALIST_REFERRAL means validated.reply_text is still the
+  // model's (now-rejected) hand-off line — swap it for the generic
+  // continuation before it's saved to history or returned to the customer,
+  // so the two are never inconsistent (customer told "you need a
+  // specialist" while everything else in the system treats it as routine).
+  if (applied.specialistReferralDowngraded) {
+    validated.reply_text = NORMAL_CONSULTATION_FALLBACK;
+  }
 
   const historyAfterUser = pushHistory(history, 'user', trimmedText);
-  const historyAfterModel = pushHistory(historyAfterUser, 'model', validated.reply_text);
+  const historyAfterModel = pushHistory(historyAfterUser, 'assistant', validated.reply_text);
 
   updateSession(chatId, {
     stage: applied.stage,
