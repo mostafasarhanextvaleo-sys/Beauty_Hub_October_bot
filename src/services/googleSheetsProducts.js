@@ -3,7 +3,13 @@ const logger = require('../utils/logger');
 const googleSheets = require('./googleSheets');
 
 const CATEGORY_VALUES = ['skincare', 'haircare', 'makeup', 'bodycare'];
-const PRODUCTS_RANGE = `${googleSheets.PRODUCTS_SHEET_NAME}!A2:I`;
+// Fetches one column past the last one this code actually reads (In Stock) —
+// production's Sheet has an extra "Routine Step" column after In Stock
+// (added by scripts/tagProductsSkinType.js) that this code has never read;
+// widening the range rather than hardcoding an exact final letter means it
+// keeps working unchanged whether that extra column exists or not, instead
+// of silently truncating it or breaking if the sheet gains another column.
+const PRODUCTS_RANGE = `${googleSheets.PRODUCTS_SHEET_NAME}!A2:J`;
 
 function splitList(value) {
   if (!value) return [];
@@ -20,8 +26,14 @@ function parseBool(value) {
   return !['false', 'no', '0', 'لا'].includes(normalized);
 }
 
+// 2026-07-18: "Skin Type" and "Hair Type" were merged into a single "Skin/Hair
+// Type" column in the Sheet (folding Hair Type's values into Skin Type,
+// comma-separated where a row had both, then deleting the Hair Type column —
+// see the migration this was run alongside). Column G is now that merged
+// column; everything from H onward shifted left by one. `targetType` is the
+// single in-memory field name replacing both `skinType`/`hairType`.
 function rowToProduct(row) {
-  const [id, name, category, price, description, benefits, skinType, hairType, inStock] = row;
+  const [id, name, category, price, description, benefits, targetType, inStock] = row;
   const normalizedCategory = (category || '').toString().trim().toLowerCase();
 
   if (!name || !normalizedCategory) return null;
@@ -40,8 +52,7 @@ function rowToProduct(row) {
     price: (price || '').toString().trim(),
     description: (description || '').toString().trim(),
     benefits: splitList(benefits),
-    skinType: splitList(skinType),
-    hairType: splitList(hairType),
+    targetType: splitList(targetType),
     inStock: parseBool(inStock),
   };
 }

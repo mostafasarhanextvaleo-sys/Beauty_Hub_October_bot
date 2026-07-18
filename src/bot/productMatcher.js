@@ -59,24 +59,32 @@ function findByCategory(category) {
   return products.filter((p) => p.category === category && p.inStock !== false);
 }
 
-function findBySkinType(category, skinType) {
+// 2026-07-18: product.skinType/product.hairType merged into a single
+// product.targetType field in the Sheet and in rowToProduct() (see
+// googleSheetsProducts.js). findBySkinType/findByHairType keep their
+// original names and signatures unchanged — callers in agent.js (the legacy
+// rule-based flow) still ask "is there a skincare product tagged for this
+// skin type" or "a haircare product tagged for this hair type" exactly as
+// before; only the underlying storage field they both read now shares one
+// name, since a given product only ever carried one type of tag anyway
+// (skincare products: skin type, haircare products: hair type — confirmed
+// mutually exclusive across the catalog before merging).
+function findByTargetType(category, type) {
   return products.filter(
     (p) =>
       p.category === category &&
       p.inStock !== false &&
-      Array.isArray(p.skinType) &&
-      p.skinType.includes(skinType)
+      Array.isArray(p.targetType) &&
+      p.targetType.includes(type)
   );
 }
 
+function findBySkinType(category, skinType) {
+  return findByTargetType(category, skinType);
+}
+
 function findByHairType(category, hairType) {
-  return products.filter(
-    (p) =>
-      p.category === category &&
-      p.inStock !== false &&
-      Array.isArray(p.hairType) &&
-      p.hairType.includes(hairType)
-  );
+  return findByTargetType(category, hairType);
 }
 
 function findBestMatch({ category, skinType, hairType, excludeIds = [] }) {
@@ -122,6 +130,10 @@ function getAllProducts() {
   return products;
 }
 
+function getById(id) {
+  return products.find((p) => p.id === id) || null;
+}
+
 module.exports = {
   findBestMatch,
   findByCategory,
@@ -131,4 +143,5 @@ module.exports = {
   getSource,
   getProductCount,
   getAllProducts,
+  getById,
 };

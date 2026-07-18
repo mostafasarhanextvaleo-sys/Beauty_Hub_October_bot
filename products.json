@@ -9,12 +9,11 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "2",
@@ -26,12 +25,11 @@
       "يرطب البشرة الجافة بعمق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "dry",
       "sensitive"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "3",
@@ -42,13 +40,12 @@
     "benefits": [
       "يوحد لون البشرة ويمنحها إشراقة"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "dry",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "4",
@@ -60,11 +57,10 @@
       "يوازن البشرة المختلطة",
       "يوحد لون البشرة بتغطية طبيعية"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "5",
@@ -76,11 +72,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "6",
@@ -91,12 +86,11 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dry",
       "frizzy"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "7",
@@ -107,11 +101,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "8",
@@ -122,11 +115,10 @@
     "benefits": [
       "يعالج تقصف وتلف الشعر"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "damaged"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "9",
@@ -137,9 +129,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "10",
@@ -150,9 +141,8 @@
     "benefits": [
       "يغطي الهالات والعيوب بشكل طبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "11",
@@ -163,9 +153,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "12",
@@ -176,9 +165,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "13",
@@ -191,12 +179,11 @@
       "يوازن البشرة المختلطة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "14",
@@ -208,11 +195,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "15",
@@ -224,11 +210,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "16",
@@ -239,9 +224,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "17",
@@ -252,9 +236,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "18",
@@ -267,9 +250,8 @@
       "يجدد خلايا البشرة ويحسن ملمسها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "19",
@@ -281,11 +263,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "20",
@@ -298,9 +279,8 @@
       "يرطب البشرة بعمق بحمض الهيالورونيك",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "21",
@@ -312,9 +292,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "22",
@@ -325,9 +304,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "23",
@@ -339,11 +317,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "24",
@@ -356,12 +333,11 @@
       "يوازن البشرة المختلطة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "25",
@@ -372,9 +348,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "26",
@@ -385,9 +360,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "27",
@@ -400,12 +374,11 @@
       "لطيف وآمن على البشرة الحساسة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "sensitive"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "28",
@@ -418,12 +391,11 @@
       "لطيف وآمن على البشرة الحساسة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "dry",
       "sensitive"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "29",
@@ -434,9 +406,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "30",
@@ -447,9 +418,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "31",
@@ -460,9 +430,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "32",
@@ -473,9 +442,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "33",
@@ -486,9 +454,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "34",
@@ -499,9 +466,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "35",
@@ -512,9 +478,8 @@
     "benefits": [
       "يمنح الخدود لوناً وردياً طبيعياً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "36",
@@ -525,9 +490,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "37",
@@ -539,9 +503,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "38",
@@ -552,9 +515,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "39",
@@ -565,9 +527,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "40",
@@ -578,9 +539,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "41",
@@ -591,9 +551,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "42",
@@ -604,11 +563,10 @@
     "benefits": [
       "يقضي على قشرة الشعر"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "43",
@@ -619,9 +577,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "44",
@@ -632,9 +589,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "45",
@@ -645,9 +601,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "46",
@@ -658,9 +613,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "47",
@@ -671,9 +625,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "48",
@@ -684,9 +637,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "49",
@@ -697,9 +649,8 @@
     "benefits": [
       "يمنح إحساساً بالنظافة والانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "50",
@@ -710,9 +661,8 @@
     "benefits": [
       "يمنح إحساساً بالنظافة والانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "51",
@@ -723,9 +673,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "52",
@@ -736,9 +685,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "53",
@@ -749,9 +697,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "54",
@@ -762,9 +709,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "55",
@@ -775,9 +721,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "56",
@@ -788,9 +733,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "57",
@@ -801,9 +745,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "58",
@@ -814,9 +757,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "59",
@@ -827,9 +769,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "60",
@@ -840,9 +781,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "61",
@@ -853,9 +793,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "62",
@@ -867,11 +806,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "63",
@@ -883,11 +821,10 @@
       "يعالج تقصف وتلف الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "damaged"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "64",
@@ -898,9 +835,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "65",
@@ -911,9 +847,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "66",
@@ -924,9 +859,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "67",
@@ -937,9 +871,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "68",
@@ -950,9 +883,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "69",
@@ -963,9 +895,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "70",
@@ -976,9 +907,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "71",
@@ -989,9 +919,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "72",
@@ -1002,9 +931,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "73",
@@ -1015,9 +943,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "74",
@@ -1028,9 +955,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "75",
@@ -1041,9 +967,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "76",
@@ -1054,9 +979,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "77",
@@ -1067,9 +991,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "78",
@@ -1080,9 +1003,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "79",
@@ -1093,9 +1015,8 @@
     "benefits": [
       "يكثف ويطول الرموش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "80",
@@ -1106,9 +1027,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "81",
@@ -1119,9 +1039,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "82",
@@ -1132,9 +1051,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "83",
@@ -1145,9 +1063,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "84",
@@ -1158,9 +1075,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "85",
@@ -1171,9 +1087,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "86",
@@ -1184,9 +1099,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "87",
@@ -1197,9 +1111,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "88",
@@ -1210,9 +1123,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "89",
@@ -1223,9 +1135,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "90",
@@ -1236,9 +1147,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "91",
@@ -1249,9 +1159,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "92",
@@ -1262,9 +1171,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "93",
@@ -1275,9 +1183,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "94",
@@ -1288,9 +1195,8 @@
     "benefits": [
       "يكثف ويطول الرموش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "95",
@@ -1301,9 +1207,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "96",
@@ -1314,9 +1219,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "97",
@@ -1327,9 +1231,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "98",
@@ -1340,9 +1243,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "99",
@@ -1353,9 +1255,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "100",
@@ -1366,9 +1267,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "101",
@@ -1379,9 +1279,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "102",
@@ -1392,9 +1291,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "103",
@@ -1405,9 +1303,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "104",
@@ -1418,9 +1315,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "105",
@@ -1431,9 +1327,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "106",
@@ -1444,9 +1339,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "107",
@@ -1457,9 +1351,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "108",
@@ -1470,9 +1363,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "109",
@@ -1483,9 +1375,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "110",
@@ -1497,9 +1388,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "111",
@@ -1510,9 +1400,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "112",
@@ -1524,9 +1413,8 @@
       "يرطب البشرة بعمق بحمض الهيالورونيك",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "113",
@@ -1537,9 +1425,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "114",
@@ -1550,9 +1437,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "115",
@@ -1563,9 +1449,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "116",
@@ -1576,9 +1461,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "117",
@@ -1589,9 +1473,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "118",
@@ -1602,9 +1485,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "119",
@@ -1615,9 +1497,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "120",
@@ -1628,9 +1509,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "121",
@@ -1641,9 +1521,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "122",
@@ -1654,9 +1533,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "123",
@@ -1667,9 +1545,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "124",
@@ -1680,11 +1557,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "125",
@@ -1695,9 +1571,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "126",
@@ -1709,11 +1584,10 @@
       "يقلل تساقط الشعر ويقويه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "127",
@@ -1724,9 +1598,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "128",
@@ -1737,9 +1610,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "129",
@@ -1750,9 +1622,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "130",
@@ -1763,9 +1634,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "131",
@@ -1776,9 +1646,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "132",
@@ -1789,9 +1658,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "133",
@@ -1802,9 +1670,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "134",
@@ -1817,9 +1684,8 @@
       "يرطب الشعر ويسهل تمشيطه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "135",
@@ -1831,9 +1697,8 @@
       "يغذي الشعر بزيت الأرجان",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "136",
@@ -1844,9 +1709,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "137",
@@ -1858,9 +1722,8 @@
       "يرطب البشرة بعمق بحمض الهيالورونيك",
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "138",
@@ -1871,9 +1734,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "139",
@@ -1884,9 +1746,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "140",
@@ -1897,9 +1758,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "141",
@@ -1910,9 +1770,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "142",
@@ -1923,9 +1782,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "143",
@@ -1936,9 +1794,8 @@
     "benefits": [
       "يغذي الشعر بزيت الزيتون"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "144",
@@ -1949,9 +1806,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "145",
@@ -1962,9 +1818,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "146",
@@ -1975,9 +1830,8 @@
     "benefits": [
       "يرطب الشعر بزيت جوز الهند"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "147",
@@ -1988,9 +1842,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "148",
@@ -2001,9 +1854,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "149",
@@ -2014,9 +1866,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "150",
@@ -2027,9 +1878,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "151",
@@ -2040,9 +1890,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "152",
@@ -2053,9 +1902,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "153",
@@ -2066,9 +1914,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "154",
@@ -2079,9 +1926,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "155",
@@ -2092,9 +1938,8 @@
     "benefits": [
       "يمنح جفون العين ألواناً جذابة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "156",
@@ -2105,9 +1950,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "157",
@@ -2118,9 +1962,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "158",
@@ -2131,9 +1974,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "159",
@@ -2144,9 +1986,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "160",
@@ -2157,9 +1998,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "161",
@@ -2170,9 +2010,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "162",
@@ -2183,9 +2022,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "163",
@@ -2196,9 +2034,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "164",
@@ -2209,9 +2046,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "165",
@@ -2222,9 +2058,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "166",
@@ -2235,9 +2070,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "167",
@@ -2248,9 +2082,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "168",
@@ -2261,9 +2094,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "169",
@@ -2274,9 +2106,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "170",
@@ -2287,9 +2118,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "171",
@@ -2300,9 +2130,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "172",
@@ -2313,9 +2142,8 @@
     "benefits": [
       "يوحد لون البشرة بتغطية طبيعية"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "173",
@@ -2326,9 +2154,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "174",
@@ -2339,9 +2166,8 @@
     "benefits": [
       "يغطي الهالات والعيوب بشكل طبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "175",
@@ -2352,9 +2178,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "176",
@@ -2365,9 +2190,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "177",
@@ -2378,9 +2202,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "178",
@@ -2391,9 +2214,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "179",
@@ -2404,9 +2226,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "180",
@@ -2417,9 +2238,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "181",
@@ -2430,9 +2250,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "182",
@@ -2443,9 +2262,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "183",
@@ -2456,9 +2274,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "184",
@@ -2469,9 +2286,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "185",
@@ -2482,9 +2298,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "186",
@@ -2495,9 +2310,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "187",
@@ -2508,9 +2322,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "188",
@@ -2521,9 +2334,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "189",
@@ -2534,9 +2346,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "190",
@@ -2547,9 +2358,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "191",
@@ -2560,9 +2370,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "192",
@@ -2573,9 +2382,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "193",
@@ -2586,9 +2394,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "194",
@@ -2599,9 +2406,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "195",
@@ -2612,9 +2418,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "196",
@@ -2625,9 +2430,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "197",
@@ -2638,9 +2442,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "198",
@@ -2651,9 +2454,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "199",
@@ -2664,9 +2466,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "200",
@@ -2677,9 +2478,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "201",
@@ -2690,9 +2490,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "202",
@@ -2703,9 +2502,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "203",
@@ -2716,9 +2514,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "204",
@@ -2729,9 +2526,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "205",
@@ -2743,9 +2539,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "206",
@@ -2756,9 +2551,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "207",
@@ -2769,9 +2563,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "208",
@@ -2782,9 +2575,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "209",
@@ -2795,9 +2587,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "210",
@@ -2809,9 +2600,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "211",
@@ -2822,9 +2612,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "212",
@@ -2835,9 +2624,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "213",
@@ -2848,9 +2636,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "214",
@@ -2861,9 +2648,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "215",
@@ -2874,9 +2660,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "216",
@@ -2887,9 +2672,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "217",
@@ -2900,9 +2684,8 @@
     "benefits": [
       "يغطي الهالات والعيوب بشكل طبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "218",
@@ -2913,9 +2696,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "219",
@@ -2926,9 +2708,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "220",
@@ -2939,9 +2720,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "221",
@@ -2954,9 +2734,8 @@
       "ينظف البشرة بعمق ولطف",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "222",
@@ -2967,9 +2746,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "223",
@@ -2981,9 +2759,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "224",
@@ -2995,9 +2772,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "225",
@@ -3008,9 +2784,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "226",
@@ -3021,9 +2796,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "227",
@@ -3034,9 +2808,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "228",
@@ -3047,9 +2820,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "229",
@@ -3060,9 +2832,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "230",
@@ -3073,9 +2844,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "231",
@@ -3086,9 +2856,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "232",
@@ -3099,9 +2868,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "233",
@@ -3112,9 +2880,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "234",
@@ -3125,9 +2892,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "235",
@@ -3139,9 +2905,8 @@
       "يرطب الشعر ويسهل تمشيطه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "236",
@@ -3152,9 +2917,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "237",
@@ -3165,9 +2929,8 @@
     "benefits": [
       "يمنح إحساساً بالنظافة والانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "238",
@@ -3178,9 +2941,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "239",
@@ -3191,9 +2953,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "240",
@@ -3204,9 +2965,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "241",
@@ -3217,9 +2977,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "242",
@@ -3230,9 +2989,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "243",
@@ -3243,9 +3001,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "244",
@@ -3256,9 +3013,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "245",
@@ -3269,9 +3025,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "246",
@@ -3283,11 +3038,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "247",
@@ -3299,11 +3053,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "248",
@@ -3314,9 +3067,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "249",
@@ -3327,9 +3079,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "250",
@@ -3340,9 +3091,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "251",
@@ -3353,9 +3103,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "252",
@@ -3366,9 +3115,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "253",
@@ -3379,9 +3127,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "254",
@@ -3392,9 +3139,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "255",
@@ -3405,9 +3151,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "256",
@@ -3418,9 +3163,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "257",
@@ -3431,9 +3175,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "258",
@@ -3445,9 +3188,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "259",
@@ -3458,9 +3200,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "260",
@@ -3471,9 +3212,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "261",
@@ -3484,9 +3224,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "262",
@@ -3498,9 +3237,8 @@
       "يرطب الشعر ويسهل تمشيطه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "263",
@@ -3512,9 +3250,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "264",
@@ -3525,9 +3262,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "265",
@@ -3538,9 +3274,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "266",
@@ -3551,9 +3286,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "267",
@@ -3564,9 +3298,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "268",
@@ -3577,9 +3310,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "269",
@@ -3590,9 +3322,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "270",
@@ -3603,9 +3334,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "271",
@@ -3616,9 +3346,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "272",
@@ -3629,9 +3358,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "273",
@@ -3642,9 +3370,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "274",
@@ -3655,9 +3382,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "275",
@@ -3668,9 +3394,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "276",
@@ -3681,9 +3406,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "277",
@@ -3694,9 +3418,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "278",
@@ -3707,9 +3430,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "279",
@@ -3720,9 +3442,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "280",
@@ -3733,9 +3454,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "281",
@@ -3746,9 +3466,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "282",
@@ -3760,9 +3479,8 @@
       "ينظف البشرة بعمق ولطف",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "283",
@@ -3773,9 +3491,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "284",
@@ -3786,9 +3503,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "285",
@@ -3799,9 +3515,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "286",
@@ -3812,9 +3527,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "287",
@@ -3825,9 +3539,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "288",
@@ -3839,9 +3552,8 @@
       "يفتح لون البشرة ويوحد درجتها",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "289",
@@ -3852,9 +3564,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "290",
@@ -3865,9 +3576,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "291",
@@ -3878,9 +3588,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "292",
@@ -3891,9 +3600,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "293",
@@ -3904,9 +3612,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "294",
@@ -3917,9 +3624,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "295",
@@ -3930,9 +3636,8 @@
     "benefits": [
       "يزيل شعر الجسم بسهولة ونعومة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "296",
@@ -3943,9 +3648,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "297",
@@ -3956,9 +3660,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "298",
@@ -3969,9 +3672,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "299",
@@ -3982,9 +3684,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "300",
@@ -3995,9 +3696,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "301",
@@ -4008,9 +3708,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "302",
@@ -4021,9 +3720,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "303",
@@ -4034,9 +3732,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "304",
@@ -4047,9 +3744,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "305",
@@ -4060,9 +3756,8 @@
     "benefits": [
       "يكثف ويطول الرموش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "306",
@@ -4073,9 +3768,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "307",
@@ -4086,9 +3780,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "308",
@@ -4099,9 +3792,8 @@
     "benefits": [
       "يكثف ويطول الرموش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "309",
@@ -4112,9 +3804,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "310",
@@ -4125,9 +3816,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "311",
@@ -4138,9 +3828,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "312",
@@ -4151,9 +3840,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "313",
@@ -4164,9 +3852,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "314",
@@ -4177,9 +3864,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "315",
@@ -4190,9 +3876,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "316",
@@ -4204,11 +3889,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "317",
@@ -4219,9 +3903,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "318",
@@ -4232,9 +3915,8 @@
     "benefits": [
       "يمنح إحساساً بالنظافة والانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "319",
@@ -4245,9 +3927,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "320",
@@ -4258,9 +3939,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "321",
@@ -4271,9 +3951,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "322",
@@ -4284,9 +3963,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "323",
@@ -4298,9 +3976,8 @@
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "324",
@@ -4311,9 +3988,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "325",
@@ -4324,9 +4000,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "326",
@@ -4337,9 +4012,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "327",
@@ -4350,9 +4024,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "328",
@@ -4363,9 +4036,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "329",
@@ -4377,9 +4049,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "330",
@@ -4390,9 +4061,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "331",
@@ -4403,9 +4073,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "332",
@@ -4416,9 +4085,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "333",
@@ -4429,9 +4097,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "334",
@@ -4442,9 +4109,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "335",
@@ -4455,9 +4121,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "336",
@@ -4468,9 +4133,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "337",
@@ -4481,9 +4145,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "338",
@@ -4494,9 +4157,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "339",
@@ -4507,9 +4169,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "340",
@@ -4520,9 +4181,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "341",
@@ -4533,9 +4193,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "342",
@@ -4546,9 +4205,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "343",
@@ -4559,9 +4217,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "344",
@@ -4572,9 +4229,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "345",
@@ -4585,9 +4241,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "346",
@@ -4598,9 +4253,8 @@
     "benefits": [
       "يمنح الخدود لوناً وردياً طبيعياً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "347",
@@ -4611,9 +4265,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "348",
@@ -4624,9 +4277,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "349",
@@ -4637,9 +4289,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "350",
@@ -4650,9 +4301,8 @@
     "benefits": [
       "يوحد لون البشرة بتغطية طبيعية"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "351",
@@ -4663,9 +4313,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "352",
@@ -4676,9 +4325,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "353",
@@ -4689,9 +4337,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "354",
@@ -4702,9 +4349,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "355",
@@ -4715,9 +4361,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "356",
@@ -4728,9 +4373,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "357",
@@ -4741,9 +4385,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "358",
@@ -4754,9 +4397,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "359",
@@ -4767,9 +4409,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "360",
@@ -4780,9 +4421,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "361",
@@ -4793,9 +4433,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "362",
@@ -4806,9 +4445,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "363",
@@ -4819,9 +4457,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "364",
@@ -4832,9 +4469,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "365",
@@ -4845,9 +4481,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "366",
@@ -4858,9 +4493,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "367",
@@ -4871,9 +4505,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "368",
@@ -4884,9 +4517,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "369",
@@ -4897,9 +4529,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "370",
@@ -4910,9 +4541,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "371",
@@ -4925,9 +4555,8 @@
       "ينظف البشرة بعمق ولطف",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "372",
@@ -4938,9 +4567,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "373",
@@ -4951,9 +4579,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "374",
@@ -4965,9 +4592,8 @@
       "يحمي البشرة من أشعة الشمس الضارة",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "375",
@@ -4978,9 +4604,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "376",
@@ -4991,9 +4616,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "377",
@@ -5004,9 +4628,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "378",
@@ -5017,9 +4640,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "379",
@@ -5030,9 +4652,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "380",
@@ -5044,9 +4665,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "381",
@@ -5057,9 +4677,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "382",
@@ -5070,9 +4689,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "383",
@@ -5084,9 +4702,8 @@
       "يحمي البشرة من أشعة الشمس الضارة",
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "384",
@@ -5097,9 +4714,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "385",
@@ -5110,9 +4726,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "386",
@@ -5123,9 +4738,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "387",
@@ -5136,9 +4750,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "388",
@@ -5149,9 +4762,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "389",
@@ -5162,9 +4774,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "390",
@@ -5175,9 +4786,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "391",
@@ -5188,9 +4798,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "392",
@@ -5201,9 +4810,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "393",
@@ -5214,9 +4822,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "394",
@@ -5227,9 +4834,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "395",
@@ -5240,9 +4846,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "396",
@@ -5253,9 +4858,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "397",
@@ -5267,9 +4871,8 @@
       "يرطب الشعر ويسهل تمشيطه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "398",
@@ -5280,9 +4883,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "399",
@@ -5293,9 +4895,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "400",
@@ -5306,9 +4907,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "401",
@@ -5319,9 +4919,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "402",
@@ -5332,9 +4931,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "403",
@@ -5345,9 +4943,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "404",
@@ -5358,9 +4955,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "405",
@@ -5371,9 +4967,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "406",
@@ -5384,9 +4979,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "407",
@@ -5397,9 +4991,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "408",
@@ -5410,9 +5003,8 @@
     "benefits": [
       "يمنح إحساساً بالنظافة والانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "409",
@@ -5423,9 +5015,8 @@
     "benefits": [
       "يمنح إحساساً بالنظافة والانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "410",
@@ -5436,9 +5027,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "411",
@@ -5449,9 +5039,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "412",
@@ -5462,9 +5051,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "413",
@@ -5475,9 +5063,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "414",
@@ -5488,9 +5075,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "415",
@@ -5501,9 +5087,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "416",
@@ -5514,9 +5099,8 @@
     "benefits": [
       "يغذي الشعر بزيت الزيتون"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "417",
@@ -5527,9 +5111,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "418",
@@ -5540,9 +5123,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "419",
@@ -5553,11 +5135,10 @@
     "benefits": [
       "يرطب البشرة الجافة بعمق"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "dry"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "420",
@@ -5568,9 +5149,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "421",
@@ -5581,9 +5161,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "422",
@@ -5594,9 +5173,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "423",
@@ -5607,11 +5185,10 @@
     "benefits": [
       "يتحكم في دهون البشرة ولمعانها"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "424",
@@ -5622,9 +5199,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "425",
@@ -5636,11 +5212,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "426",
@@ -5651,9 +5226,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "427",
@@ -5666,9 +5240,8 @@
       "ينظف البشرة بعمق ولطف",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "428",
@@ -5679,9 +5252,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "429",
@@ -5693,11 +5265,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "430",
@@ -5708,9 +5279,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "431",
@@ -5721,9 +5291,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "432",
@@ -5734,9 +5303,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "433",
@@ -5747,9 +5315,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "434",
@@ -5760,9 +5327,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "435",
@@ -5773,9 +5339,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "436",
@@ -5786,9 +5351,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "437",
@@ -5799,9 +5363,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "438",
@@ -5812,9 +5375,8 @@
     "benefits": [
       "يمنح الخدود لوناً وردياً طبيعياً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "439",
@@ -5825,9 +5387,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "440",
@@ -5839,9 +5400,8 @@
       "يرطب الشعر ويسهل تمشيطه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "441",
@@ -5852,9 +5412,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "442",
@@ -5865,9 +5424,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "443",
@@ -5878,9 +5436,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "444",
@@ -5892,11 +5449,10 @@
       "يقلل تساقط الشعر ويقويه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "445",
@@ -5907,9 +5463,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "446",
@@ -5920,9 +5475,8 @@
     "benefits": [
       "يرطب الشعر بزيت جوز الهند"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "447",
@@ -5933,9 +5487,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "448",
@@ -5946,9 +5499,8 @@
     "benefits": [
       "يفرد ويلمع الشعر بالكيراتين"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "449",
@@ -5959,9 +5511,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "450",
@@ -5972,9 +5523,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "451",
@@ -5985,9 +5535,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "452",
@@ -5998,9 +5547,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "453",
@@ -6011,9 +5559,8 @@
     "benefits": [
       "يمنح جفون العين ألواناً جذابة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "454",
@@ -6024,9 +5571,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "455",
@@ -6037,9 +5583,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "456",
@@ -6050,9 +5595,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "457",
@@ -6063,9 +5607,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "458",
@@ -6077,9 +5620,8 @@
       "يفتح لون البشرة ويوحد درجتها",
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "459",
@@ -6091,9 +5633,8 @@
       "يفتح لون البشرة ويوحد درجتها",
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "460",
@@ -6104,9 +5645,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "461",
@@ -6117,9 +5657,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "462",
@@ -6130,9 +5669,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "463",
@@ -6143,9 +5681,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "464",
@@ -6157,9 +5694,8 @@
       "يغذي الشعر بزيت الأرجان",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "465",
@@ -6170,9 +5706,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "466",
@@ -6184,9 +5719,8 @@
       "يفتح لون البشرة ويوحد درجتها",
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "467",
@@ -6197,9 +5731,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "468",
@@ -6211,9 +5744,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "469",
@@ -6224,9 +5756,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "470",
@@ -6237,9 +5768,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "471",
@@ -6251,9 +5781,8 @@
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "472",
@@ -6265,9 +5794,8 @@
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "473",
@@ -6278,9 +5806,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "474",
@@ -6291,9 +5818,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "475",
@@ -6305,11 +5831,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "476",
@@ -6321,11 +5846,10 @@
       "يعالج تقصف وتلف الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "damaged"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "477",
@@ -6336,9 +5860,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "478",
@@ -6349,9 +5872,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "479",
@@ -6363,9 +5885,8 @@
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "480",
@@ -6377,9 +5898,8 @@
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "481",
@@ -6390,9 +5910,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "482",
@@ -6403,11 +5922,10 @@
     "benefits": [
       "يقضي على قشرة الشعر"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "483",
@@ -6418,9 +5936,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "484",
@@ -6431,9 +5948,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "485",
@@ -6445,9 +5961,8 @@
       "يغذي الشعر بزيت الأرجان",
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "486",
@@ -6459,9 +5974,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "487",
@@ -6472,9 +5986,8 @@
     "benefits": [
       "يغذي الشعر بزيت الزيتون"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "488",
@@ -6485,9 +5998,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "489",
@@ -6498,11 +6010,10 @@
     "benefits": [
       "يقضي على قشرة الشعر"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "490",
@@ -6514,11 +6025,10 @@
       "يقلل تساقط الشعر ويقويه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "491",
@@ -6529,9 +6039,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "492",
@@ -6542,11 +6051,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "493",
@@ -6557,9 +6065,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "494",
@@ -6570,9 +6077,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "495",
@@ -6583,9 +6089,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "496",
@@ -6596,9 +6101,8 @@
     "benefits": [
       "يمنح جفون العين ألواناً جذابة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "497",
@@ -6609,9 +6113,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "498",
@@ -6622,9 +6125,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "499",
@@ -6635,9 +6137,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "500",
@@ -6648,9 +6149,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "501",
@@ -6661,9 +6161,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "502",
@@ -6674,9 +6173,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "503",
@@ -6687,9 +6185,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "504",
@@ -6701,11 +6198,10 @@
       "لطيف وآمن على البشرة الحساسة",
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "sensitive"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "505",
@@ -6716,9 +6212,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "506",
@@ -6729,9 +6224,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "507",
@@ -6742,9 +6236,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "508",
@@ -6757,11 +6250,10 @@
       "يحمي البشرة من أشعة الشمس الضارة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "509",
@@ -6772,9 +6264,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "510",
@@ -6785,9 +6276,8 @@
     "benefits": [
       "يمنع التعرق ويمنح رائحة منعشة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "511",
@@ -6798,9 +6288,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "512",
@@ -6811,9 +6300,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "513",
@@ -6826,12 +6314,11 @@
       "يوازن البشرة المختلطة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "514",
@@ -6842,9 +6329,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "515",
@@ -6855,9 +6341,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "516",
@@ -6868,9 +6353,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "517",
@@ -6881,9 +6365,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "518",
@@ -6894,9 +6377,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "519",
@@ -6907,9 +6389,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "520",
@@ -6921,11 +6402,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "521",
@@ -6937,11 +6417,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "522",
@@ -6952,9 +6431,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "523",
@@ -6965,9 +6443,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "524",
@@ -6978,9 +6455,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "525",
@@ -6991,9 +6467,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "526",
@@ -7004,9 +6479,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "527",
@@ -7017,9 +6491,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "528",
@@ -7030,9 +6503,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "529",
@@ -7043,9 +6515,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "530",
@@ -7056,9 +6527,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "531",
@@ -7069,9 +6539,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "532",
@@ -7082,9 +6551,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "533",
@@ -7095,9 +6563,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "534",
@@ -7108,9 +6575,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "535",
@@ -7121,9 +6587,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "536",
@@ -7134,9 +6599,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "537",
@@ -7147,9 +6611,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "538",
@@ -7160,9 +6623,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "539",
@@ -7173,9 +6635,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "540",
@@ -7186,9 +6647,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "541",
@@ -7199,9 +6659,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "542",
@@ -7212,9 +6671,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "543",
@@ -7225,9 +6683,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "544",
@@ -7238,9 +6695,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "545",
@@ -7251,9 +6707,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "546",
@@ -7264,9 +6719,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "547",
@@ -7277,9 +6731,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "548",
@@ -7290,9 +6743,8 @@
     "benefits": [
       "يرطب الشعر بزيت جوز الهند"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "549",
@@ -7303,11 +6755,10 @@
     "benefits": [
       "يرطب البشرة الجافة بعمق"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "dry"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "550",
@@ -7318,9 +6769,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "551",
@@ -7331,9 +6781,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "552",
@@ -7346,9 +6795,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "553",
@@ -7359,9 +6807,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "554",
@@ -7372,9 +6819,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "555",
@@ -7385,9 +6831,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "556",
@@ -7398,9 +6843,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "557",
@@ -7411,9 +6855,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "558",
@@ -7424,9 +6867,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "559",
@@ -7437,9 +6879,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "560",
@@ -7450,9 +6891,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "561",
@@ -7465,9 +6905,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "562",
@@ -7480,9 +6919,8 @@
       "يرطب البشرة بعمق بحمض الهيالورونيك",
       "يرطب الشفاه ويحميها من التشقق"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "563",
@@ -7493,9 +6931,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "564",
@@ -7506,9 +6943,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "565",
@@ -7519,9 +6955,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "566",
@@ -7532,9 +6967,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "567",
@@ -7545,9 +6979,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "568",
@@ -7558,9 +6991,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "569",
@@ -7571,9 +7003,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "570",
@@ -7584,9 +7015,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "571",
@@ -7597,9 +7027,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "572",
@@ -7610,9 +7039,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "573",
@@ -7623,9 +7051,8 @@
     "benefits": [
       "يوحد لون البشرة بتغطية طبيعية"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "574",
@@ -7636,9 +7063,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "575",
@@ -7649,9 +7075,8 @@
     "benefits": [
       "يكثف ويطول الرموش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "576",
@@ -7662,9 +7087,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "577",
@@ -7675,9 +7099,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "578",
@@ -7689,9 +7112,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "579",
@@ -7703,9 +7125,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "580",
@@ -7716,9 +7137,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "581",
@@ -7730,9 +7150,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "582",
@@ -7743,9 +7162,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "583",
@@ -7756,9 +7174,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "584",
@@ -7770,11 +7187,10 @@
       "يقلل تساقط الشعر ويقويه",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "585",
@@ -7787,9 +7203,8 @@
       "يجدد خلايا البشرة ويحسن ملمسها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "586",
@@ -7801,9 +7216,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "587",
@@ -7815,11 +7229,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "588",
@@ -7831,11 +7244,10 @@
       "يقلل تساقط الشعر ويقويه",
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "589",
@@ -7846,9 +7258,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "590",
@@ -7859,9 +7270,8 @@
     "benefits": [
       "يحمي البشرة من أشعة الشمس الضارة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "591",
@@ -7872,9 +7282,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "592",
@@ -7885,9 +7294,8 @@
     "benefits": [
       "يغطي الهالات والعيوب بشكل طبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "593",
@@ -7898,9 +7306,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "594",
@@ -7911,9 +7318,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "595",
@@ -7924,9 +7330,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "596",
@@ -7937,9 +7342,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "597",
@@ -7950,9 +7354,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "598",
@@ -7963,9 +7366,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "599",
@@ -7976,9 +7378,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "600",
@@ -7989,9 +7390,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "601",
@@ -8002,9 +7402,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "602",
@@ -8015,9 +7414,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "603",
@@ -8028,9 +7426,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "604",
@@ -8041,9 +7438,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "605",
@@ -8054,9 +7450,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "606",
@@ -8067,9 +7462,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "607",
@@ -8080,9 +7474,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "608",
@@ -8093,9 +7486,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "609",
@@ -8106,9 +7498,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "610",
@@ -8121,9 +7512,8 @@
       "يرطب الشعر ويسهل تمشيطه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "611",
@@ -8135,9 +7525,8 @@
       "يغذي الشعر بزيت الأرجان",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "612",
@@ -8148,9 +7537,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "613",
@@ -8161,9 +7549,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "614",
@@ -8174,9 +7561,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "615",
@@ -8187,9 +7573,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "616",
@@ -8200,9 +7585,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "617",
@@ -8213,9 +7597,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "618",
@@ -8226,9 +7609,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "619",
@@ -8239,9 +7621,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "620",
@@ -8254,11 +7635,10 @@
       "يفتح لون البشرة ويوحد درجتها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "sensitive"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "621",
@@ -8269,9 +7649,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "622",
@@ -8282,9 +7661,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "623",
@@ -8295,9 +7673,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "624",
@@ -8308,9 +7685,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "625",
@@ -8321,9 +7697,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "626",
@@ -8334,9 +7709,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "627",
@@ -8347,9 +7721,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "628",
@@ -8360,9 +7733,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "629",
@@ -8373,9 +7745,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "630",
@@ -8386,9 +7757,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "631",
@@ -8399,9 +7769,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "632",
@@ -8412,9 +7781,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "633",
@@ -8425,9 +7793,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "634",
@@ -8438,9 +7805,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "635",
@@ -8451,9 +7817,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "636",
@@ -8464,9 +7829,8 @@
     "benefits": [
       "يغطي الشيب بلون ثابت وطبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "637",
@@ -8477,9 +7841,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "638",
@@ -8490,9 +7853,8 @@
     "benefits": [
       "يقوي الشعر بالبروتين"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "639",
@@ -8503,9 +7865,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "640",
@@ -8516,9 +7877,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "641",
@@ -8529,9 +7889,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "642",
@@ -8542,9 +7901,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "643",
@@ -8555,9 +7913,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "644",
@@ -8569,9 +7926,8 @@
       "يجدد خلايا البشرة ويحسن ملمسها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "645",
@@ -8582,9 +7938,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "646",
@@ -8595,9 +7950,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "647",
@@ -8608,9 +7962,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "648",
@@ -8621,9 +7974,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "649",
@@ -8634,9 +7986,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "650",
@@ -8647,9 +7998,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "651",
@@ -8660,9 +8010,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "652",
@@ -8673,9 +8022,8 @@
     "benefits": [
       "يغذي الشعر بزيت الأرجان"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "653",
@@ -8686,9 +8034,8 @@
     "benefits": [
       "يقوي الشعر بالبروتين"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "654",
@@ -8699,9 +8046,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "655",
@@ -8712,9 +8058,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "656",
@@ -8725,9 +8070,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "657",
@@ -8739,9 +8083,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "658",
@@ -8753,11 +8096,10 @@
       "لطيف وآمن على البشرة الحساسة",
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "sensitive"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "659",
@@ -8768,9 +8110,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "660",
@@ -8781,9 +8122,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "661",
@@ -8794,9 +8134,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "662",
@@ -8807,9 +8146,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "663",
@@ -8820,9 +8158,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "664",
@@ -8833,9 +8170,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "665",
@@ -8846,9 +8182,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "666",
@@ -8859,9 +8194,8 @@
     "benefits": [
       "يكثف ويطول الرموش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "667",
@@ -8872,9 +8206,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "668",
@@ -8885,9 +8218,8 @@
     "benefits": [
       "يوحد لون البشرة بتغطية طبيعية"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "669",
@@ -8898,9 +8230,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "670",
@@ -8911,9 +8242,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "671",
@@ -8924,9 +8254,8 @@
     "benefits": [
       "يغطي الهالات والعيوب بشكل طبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "672",
@@ -8937,9 +8266,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "673",
@@ -8950,9 +8278,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "674",
@@ -8963,9 +8290,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "675",
@@ -8976,9 +8302,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "676",
@@ -8989,9 +8314,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "677",
@@ -9002,9 +8326,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "678",
@@ -9015,9 +8338,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "679",
@@ -9028,9 +8350,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "680",
@@ -9041,9 +8362,8 @@
     "benefits": [
       "يغطي الهالات والعيوب بشكل طبيعي"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "681",
@@ -9054,9 +8374,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "682",
@@ -9067,9 +8386,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "683",
@@ -9080,9 +8398,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "684",
@@ -9093,9 +8410,8 @@
     "benefits": [
       "يمنح الشفاه لوناً جذاباً وثباتاً طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "685",
@@ -9106,9 +8422,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "686",
@@ -9119,9 +8434,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "687",
@@ -9132,9 +8446,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "688",
@@ -9145,9 +8458,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "689",
@@ -9158,9 +8470,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "690",
@@ -9171,9 +8482,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "691",
@@ -9184,9 +8494,8 @@
     "benefits": [
       "يبرز جمال العينين بخط دقيق وثابت"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "692",
@@ -9197,9 +8506,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "693",
@@ -9210,9 +8518,8 @@
     "benefits": [
       "يوحد لون البشرة بتغطية طبيعية"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "694",
@@ -9223,9 +8530,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "695",
@@ -9236,11 +8542,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "696",
@@ -9251,9 +8556,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "697",
@@ -9264,9 +8568,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "698",
@@ -9277,9 +8580,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "699",
@@ -9290,9 +8592,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "700",
@@ -9303,9 +8604,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "701",
@@ -9316,9 +8616,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "702",
@@ -9330,11 +8629,10 @@
       "يتحكم في دهون البشرة ولمعانها",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "703",
@@ -9345,9 +8643,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "704",
@@ -9358,9 +8655,8 @@
     "benefits": [
       "يفتح لون البشرة ويوحد درجتها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "705",
@@ -9371,9 +8667,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "706",
@@ -9384,9 +8679,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "707",
@@ -9397,9 +8691,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "708",
@@ -9410,9 +8703,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "709",
@@ -9423,9 +8715,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "710",
@@ -9436,9 +8727,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "711",
@@ -9449,9 +8739,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "712",
@@ -9462,9 +8751,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "713",
@@ -9475,9 +8763,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "714",
@@ -9488,9 +8775,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "715",
@@ -9501,9 +8787,8 @@
     "benefits": [
       "يمنح الأظافر مظهراً أنيقاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "716",
@@ -9514,9 +8799,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "717",
@@ -9527,9 +8811,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "718",
@@ -9540,9 +8823,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "719",
@@ -9553,9 +8835,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "720",
@@ -9566,9 +8847,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "721",
@@ -9580,9 +8860,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "722",
@@ -9593,9 +8872,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "723",
@@ -9606,9 +8884,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "724",
@@ -9619,9 +8896,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "725",
@@ -9632,9 +8908,8 @@
     "benefits": [
       "يصبغ الشعر بلون طبيعي جميل"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "726",
@@ -9645,9 +8920,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "727",
@@ -9658,9 +8932,8 @@
     "benefits": [
       "يرطب الجسم ويتركه ناعماً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "728",
@@ -9671,9 +8944,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "729",
@@ -9684,9 +8956,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "730",
@@ -9697,9 +8968,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "731",
@@ -9710,9 +8980,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "732",
@@ -9723,9 +8992,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "733",
@@ -9736,9 +9004,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "734",
@@ -9749,9 +9016,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "735",
@@ -9764,9 +9030,8 @@
       "يعالج البشرة بتركيز عالي من المكونات الفعالة",
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "736",
@@ -9777,11 +9042,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "737",
@@ -9793,11 +9057,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "738",
@@ -9808,9 +9071,8 @@
     "benefits": [
       "ينظف البشرة بعمق ولطف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "739",
@@ -9821,9 +9083,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "740",
@@ -9834,9 +9095,8 @@
     "benefits": [
       "يغذي الشعر ويمنحه لمعاناً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "741",
@@ -9847,11 +9107,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "742",
@@ -9862,11 +9121,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "743",
@@ -9878,11 +9136,10 @@
       "يقضي على قشرة الشعر",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "dandruff"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "744",
@@ -9893,11 +9150,10 @@
     "benefits": [
       "يقلل تساقط الشعر ويقويه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "745",
@@ -9908,9 +9164,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "746",
@@ -9923,12 +9178,11 @@
       "يوازن البشرة المختلطة",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "747",
@@ -9940,12 +9194,11 @@
       "يتحكم في دهون البشرة ولمعانها",
       "يوازن البشرة المختلطة"
     ],
-    "skinType": [
+    "inStock": true,
+    "targetType": [
       "oily",
       "combination"
-    ],
-    "hairType": [],
-    "inStock": true
+    ]
   },
   {
     "id": "748",
@@ -9957,9 +9210,8 @@
       "يوحد لون البشرة ويمنحها إشراقة",
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "749",
@@ -9970,9 +9222,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "750",
@@ -9983,9 +9234,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "751",
@@ -9997,11 +9247,10 @@
       "يقلل تساقط الشعر ويقويه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "752",
@@ -10013,11 +9262,10 @@
       "يقلل تساقط الشعر ويقويه",
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [
+    "inStock": true,
+    "targetType": [
       "falling"
-    ],
-    "inStock": true
+    ]
   },
   {
     "id": "753",
@@ -10028,9 +9276,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "754",
@@ -10041,9 +9288,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "755",
@@ -10055,9 +9301,8 @@
       "يرطب البشرة بعمق بحمض الهيالورونيك",
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "756",
@@ -10068,9 +9313,8 @@
     "benefits": [
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "757",
@@ -10082,9 +9326,8 @@
       "يرطب الشعر بزيت جوز الهند",
       "يثبت تسريحة الشعر طوال اليوم"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "758",
@@ -10095,9 +9338,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "759",
@@ -10108,9 +9350,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "760",
@@ -10121,9 +9362,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "761",
@@ -10134,9 +9374,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "762",
@@ -10147,9 +9386,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "763",
@@ -10160,9 +9398,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "764",
@@ -10173,9 +9410,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "765",
@@ -10186,9 +9422,8 @@
     "benefits": [
       "ينظف الجسم بلطف ويترك رائحة منعشة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "766",
@@ -10199,9 +9434,8 @@
     "benefits": [
       "يرطب الشعر بزيت جوز الهند"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "767",
@@ -10212,9 +9446,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "768",
@@ -10225,9 +9458,8 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "769",
@@ -10238,9 +9470,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "770",
@@ -10251,9 +9482,8 @@
     "benefits": [
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "771",
@@ -10265,9 +9495,8 @@
       "يغذي الشعر بزيت الأرجان",
       "يعالج البشرة بتركيز عالي من المكونات الفعالة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "772",
@@ -10278,9 +9507,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "773",
@@ -10291,9 +9519,8 @@
     "benefits": [
       "رائحة فواحة تدوم طويلاً"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "774",
@@ -10304,9 +9531,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "775",
@@ -10317,9 +9543,8 @@
     "benefits": [
       "يرطب الشعر ويسهل تمشيطه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "776",
@@ -10330,9 +9555,8 @@
     "benefits": [
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "777",
@@ -10343,9 +9567,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "778",
@@ -10356,9 +9579,8 @@
     "benefits": [
       "ينظف الشعر ويغذيه"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "779",
@@ -10369,9 +9591,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "780",
@@ -10383,9 +9604,8 @@
       "يغذي الشعر بزيت الأرجان",
       "يرطب الشعر بزيت جوز الهند"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "781",
@@ -10396,9 +9616,8 @@
     "benefits": [
       "يعتني بصحة الشعر وحيويته"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "782",
@@ -10409,9 +9628,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "783",
@@ -10422,9 +9640,8 @@
     "benefits": [
       "يبرز جمال ملامحك بثقة"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "784",
@@ -10436,9 +9653,8 @@
       "يرطب الشفاه ويحميها من التشقق",
       "يرطب البشرة ويحميها من الجفاف"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "785",
@@ -10449,9 +9665,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "786",
@@ -10462,9 +9677,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "787",
@@ -10475,9 +9689,8 @@
     "benefits": [
       "يعتني بجسمك ويمنحك إحساساً بالانتعاش"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   },
   {
     "id": "788",
@@ -10488,8 +9701,7 @@
     "benefits": [
       "يعتني ببشرتك ويحسن مظهرها"
     ],
-    "skinType": [],
-    "hairType": [],
-    "inStock": true
+    "inStock": true,
+    "targetType": []
   }
 ]

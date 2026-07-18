@@ -74,13 +74,14 @@ You have two options — the bot always keeps `products.json` as a safety fallba
 
 Once Google Sheets is set up (section 6), edit the **Products** tab directly in your spreadsheet. Columns:
 
-| ID | Name | Category | Price | Description | Benefits | Skin Type | Hair Type | In Stock |
-|----|------|----------|-------|--------------|----------|-----------|-----------|----------|
+| ID | Name | Category | Price | Description | Benefits | Skin/Hair Type | In Stock |
+|----|------|----------|-------|--------------|----------|----------------|----------|
 
 - `Category` must be exactly one of: `skincare`, `haircare`, `makeup`, `bodycare`.
-- `Benefits`, `Skin Type`, `Hair Type` — comma-separated values, e.g. `oily, combination` or `dry, frizzy`.
-  - Valid `Skin Type` values: `oily`, `dry`, `combination`, `sensitive`.
-  - Valid `Hair Type` values: `dry`, `frizzy`, `damaged`, `falling`, `dandruff`.
+- `Benefits`, `Skin/Hair Type` — comma-separated values, e.g. `oily, combination` or `dry, frizzy`.
+  - For `skincare` products, valid values: `oily`, `dry`, `combination`, `sensitive`.
+  - For `haircare` products, valid values: `dry`, `frizzy`, `damaged`, `falling`, `dandruff`.
+  - (Single merged column as of 2026-07-18 — a product is only ever tagged with one type of value depending on its category, so this never mixes the two vocabularies on one row.)
 - `In Stock` — `TRUE` or `FALSE` (defaults to `TRUE` if left blank).
 - Rows with an invalid/blank `Category` are skipped and logged as a warning — they won't crash the bot.
 
@@ -98,8 +99,7 @@ Edit `products.json` in the project root. Each product looks like:
   "price": "",
   "description": "",
   "benefits": [],
-  "skinType": [],
-  "hairType": [],
+  "targetType": [],
   "inStock": true
 }
 ```
