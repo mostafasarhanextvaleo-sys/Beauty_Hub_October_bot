@@ -166,11 +166,19 @@ async function init() {
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
     sheetsClient = google.sheets({ version: 'v4', auth });
+    // Set before ensureSheetsStructure() runs (its sub-steps gate on this
+    // flag), but success is NOT logged/recorded until that call actually
+    // completes without throwing — see the 2026-07-28 audit note on
+    // ensureSheetsStructure() for why: this used to fire unconditionally
+    // right here, which logged "initialized" even when structure
+    // verification failed immediately afterward (confirmed live 2026-07-27:
+    // an OK "initialized" log was followed by hours of "Leads sheetId not
+    // resolved" warnings with no retry ever scheduled).
     enabled = true;
-    logger.success('Google Sheets service initialized.');
     await withTimeout(ensureSheetsStructure(), STARTUP_TIMEOUT_MS, 'Google Sheet tab setup');
     recordSuccess();
     stopRetryTimer();
+    logger.success('Google Sheets service initialized and verified.');
   } catch (err) {
     logger.error(
       `Google Sheets setup did not complete (network issue or slow response). The WhatsApp bot will continue running; Sheets logging is disabled until connectivity recovers — retrying automatically every ${RETRY_INTERVAL_MS / 1000}s.`,
@@ -241,7 +249,18 @@ async function ensureSheetsStructure() {
     await loadPhoneRowCache();
     await loadCustomerHistoryCache();
   } catch (err) {
-    logger.error('Could not verify/create Google Sheet tabs. Continuing without full Sheets integration.', err);
+    // Rethrow (2026-07-28 fix) instead of swallowing: this catch only ever
+    // fires for the critical path above (spreadsheets.get/batchUpdate/leadsSheetId
+    // resolution) — ensureHeaderRow/loadPhoneRowCache/loadCustomerHistoryCache
+    // each already catch their own errors and degrade gracefully without
+    // throwing, so they never reach here. Letting this propagate to init()'s
+    // catch is what makes recordSuccess()/stopRetryTimer() only fire on real
+    // success, and what makes scheduleRetry() actually run instead of never
+    // firing. Previously this was swallowed here, which left the bot
+    // reporting itself healthy for hours while leadsSheetId stayed
+    // unresolved and nothing ever retried.
+    logger.error('Could not verify/create Google Sheet tabs.', err);
+    throw err;
   }
 }
 

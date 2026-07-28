@@ -694,9 +694,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', content: trimmedText }];
 
-  // Tier order: local -> openai -> gemini. Canary allowlist (localAgentTestChatIds)
-  // was removed 2026-07-13 to roll the fine-tuned local model out to 100% of
-  // traffic; openai/gemini remain as the fallback chain if local fails.
+  // Tier order when enabled: local -> openai -> gemini. The local fine-tuned
+  // model was briefly rolled out to 100% of traffic starting 2026-07-13, but
+  // as of 2026-07-18 LOCAL_AGENT_ENABLED=false in the live .env — the bot is
+  // currently serving all traffic from openai (primary) -> gemini (fallback)
+  // only. The local tier's code path here is intentionally left intact
+  // (not dead code) so it can be re-enabled via config without a deploy.
   const useLocal = config.localAgentEnabled;
   const callArgs = { systemInstruction, contents, responseSchema: RESPONSE_SCHEMA };
 
