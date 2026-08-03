@@ -22,13 +22,10 @@ function withTimeout(promise, ms, label) {
 // signature exactly so llmAgent.js can call any of the three interchangeably.
 // Never throws — returns null on any failure, same convention as the others.
 async function generateStructuredReply({ systemInstruction, contents, responseSchema }) {
-  const messages = [
-    { role: 'system', content: systemInstruction },
-    ...contents.map((turn) => ({
-      role: turn.role === 'model' ? 'assistant' : 'user',
-      content: (turn.parts || []).map((p) => p.text).join('\n'),
-    })),
-  ];
+  // `contents` is already {role: 'user'|'assistant', content} — the canonical
+  // shape llmAgent.js stores in session.llm.history — so it drops straight
+  // into Ollama's OpenAI-compatible /api/chat messages array as-is.
+  const messages = [{ role: 'system', content: systemInstruction }, ...contents];
 
   for (const model of config.localModels) {
     try {

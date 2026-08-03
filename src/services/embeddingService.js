@@ -1,7 +1,7 @@
 const fetch = require('node-fetch');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { withTimeout } = require('../utils/helpers');
+const { resilientFetch } = require('../utils/resilientFetch');
 
 const OPENAI_EMBEDDINGS_URL = 'https://api.openai.com/v1/embeddings';
 // Cost-effective embedding model (not the larger -3-large) — catalog text is
@@ -24,17 +24,19 @@ async function embedTexts(texts) {
   if (texts.length === 0) return [];
 
   try {
-    const response = await withTimeout(
-      fetch(OPENAI_EMBEDDINGS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.openaiApiKey}`,
-        },
-        body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts }),
-      }),
-      config.openaiTimeoutMs,
-      'OpenAI /embeddings'
+    const response = await resilientFetch(
+      'openai-embeddings',
+      config.openaiEmbeddingsConcurrency,
+      () =>
+        fetch(OPENAI_EMBEDDINGS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.openaiApiKey}`,
+          },
+          body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts }),
+        }),
+      { timeoutMs: config.openaiTimeoutMs, label: 'OpenAI /embeddings' }
     );
 
     if (!response.ok) {

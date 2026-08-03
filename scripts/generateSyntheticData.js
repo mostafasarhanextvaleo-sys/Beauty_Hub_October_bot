@@ -93,9 +93,9 @@ async function runConversation(plan) {
   let recommendedProduct = null;
 
   for (const turnText of plan.turns) {
-    const candidates = selectCandidatesForTurn(turnText, { excludeIds: shownProductIds, recommendedProduct });
+    const candidates = await selectCandidatesForTurn(turnText, { excludeIds: shownProductIds, recommendedProduct });
     const systemInstruction = buildSystemPrompt(candidates);
-    const contents = [...history, { role: 'user', parts: [{ text: turnText }] }];
+    const contents = [...history, { role: 'user', content: turnText }];
     const callArgs = { systemInstruction, contents, responseSchema: RESPONSE_SCHEMA };
 
     let validated = null;
@@ -107,7 +107,7 @@ async function runConversation(plan) {
       }
     }
 
-    stats.inputTokens += estimateTokens(systemInstruction) + estimateTokens(contents.map((c) => c.parts.map((p) => p.text).join(' ')).join(' '));
+    stats.inputTokens += estimateTokens(systemInstruction) + estimateTokens(contents.map((c) => c.content).join(' '));
 
     if (!validated) {
       stats.turnsFailed += 1;
@@ -119,12 +119,12 @@ async function runConversation(plan) {
     stats.byTeacher[teacher] += 1;
     stats.byCategory[plan.category] = (stats.byCategory[plan.category] || 0) + 1;
 
+    // `contents` is already the canonical {role, content} shape (see
+    // llmAgent.js/openaiService.js) — this is exactly the OpenAI fine-tuning
+    // messages format already, no conversion needed.
     const messages = [
       { role: 'system', content: systemInstruction },
-      ...contents.map((turn) => ({
-        role: turn.role === 'model' ? 'assistant' : 'user',
-        content: (turn.parts || []).map((p) => p.text).join('\n'),
-      })),
+      ...contents,
       { role: 'assistant', content: JSON.stringify(validated) },
     ];
     await appendResultLine({
@@ -139,7 +139,7 @@ async function runConversation(plan) {
     }
     shownProductIds = [...new Set([...shownProductIds, ...mentionedIds])];
     history = pushHistory(history, 'user', turnText);
-    history = pushHistory(history, 'model', validated.reply_text);
+    history = pushHistory(history, 'assistant', validated.reply_text);
   }
 
   stats.conversationsCompleted += 1;

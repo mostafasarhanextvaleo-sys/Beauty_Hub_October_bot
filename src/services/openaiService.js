@@ -1,7 +1,7 @@
 const fetch = require('node-fetch');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { withTimeout } = require('../utils/helpers');
+const { resilientFetch } = require('../utils/resilientFetch');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -12,24 +12,26 @@ async function generateReply(systemPrompt, userMessage) {
   }
 
   try {
-    const response = await withTimeout(
-      fetch(OPENAI_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.openaiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage },
-          ],
-          temperature: 0.6,
+    const response = await resilientFetch(
+      'openai-chat',
+      config.openaiChatConcurrency,
+      () =>
+        fetch(OPENAI_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userMessage },
+            ],
+            temperature: 0.6,
+          }),
         }),
-      }),
-      config.openaiTimeoutMs,
-      'OpenAI /chat/completions (generateReply)'
+      { timeoutMs: config.openaiTimeoutMs, label: 'OpenAI /chat/completions (generateReply)' }
     );
 
     if (!response.ok) {
@@ -61,25 +63,27 @@ async function generateStructuredReply({ systemInstruction, contents, responseSc
   const messages = [{ role: 'system', content: systemInstruction }, ...contents];
 
   try {
-    const response = await withTimeout(
-      fetch(OPENAI_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.openaiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages,
-          temperature: 0.4,
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: 'agent_reply', schema: responseSchema, strict: true },
+    const response = await resilientFetch(
+      'openai-chat',
+      config.openaiChatConcurrency,
+      () =>
+        fetch(OPENAI_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.openaiApiKey}`,
           },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages,
+            temperature: 0.4,
+            response_format: {
+              type: 'json_schema',
+              json_schema: { name: 'agent_reply', schema: responseSchema, strict: true },
+            },
+          }),
         }),
-      }),
-      config.openaiTimeoutMs,
-      'OpenAI /chat/completions (generateStructuredReply)'
+      { timeoutMs: config.openaiTimeoutMs, label: 'OpenAI /chat/completions (generateStructuredReply)' }
     );
 
     if (!response.ok) {

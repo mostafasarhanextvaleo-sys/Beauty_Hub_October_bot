@@ -17,12 +17,12 @@ const OUT_PATH = path.join(__dirname, '..', '..', 'training-data', 'conversation
 // break a live reply.
 function logTrainingExample({ systemInstruction, contents, output, providerUsed }) {
   try {
+    // `contents` is already the canonical {role, content} shape (see
+    // llmAgent.js/openaiService.js) — this is exactly the OpenAI fine-tuning
+    // messages format already, no conversion needed.
     const messages = [
       { role: 'system', content: systemInstruction },
-      ...contents.map((turn) => ({
-        role: turn.role === 'model' ? 'assistant' : 'user',
-        content: (turn.parts || []).map((p) => p.text).join('\n'),
-      })),
+      ...contents,
       { role: 'assistant', content: JSON.stringify(output) },
     ];
 

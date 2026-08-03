@@ -1,9 +1,10 @@
 const { getSession, updateSession, STAGES, isDeliveryFeedbackExpired } = require('./conversationMemory');
 const escalationDetector = require('./escalationDetector');
-const { containsAny, containsWord } = require('../utils/helpers');
+const { containsAny, containsWord, normalizeArabic } = require('../utils/helpers');
 const { buildEscalationResponse, baseLogFields, resolveEarlyStageOrderStatus } = require('./sessionLogHelpers');
 const deliveryFeedbackDetector = require('./deliveryFeedbackDetector');
 const orderStatusDetector = require('./orderStatusDetector');
+const websiteOrderDetector = require('./websiteOrderDetector');
 const productSearch = require('./productSearch');
 const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
@@ -15,17 +16,25 @@ const logger = require('../utils/logger');
 const trainingDataLogger = require('../utils/trainingDataLogger');
 const agentStats = require('./agentStats');
 const routineBundles = require('./routineBundles');
+const campaignKnowledge = require('./campaignKnowledge');
 const googleSheets = require('../services/googleSheets');
 
 // Rolling window, not the full conversation — bounds prompt size/cost/latency
 // so a long-running customer's per-message cost doesn't keep growing forever
-// and can never exceed the model's context window. ~30 user/model turn pairs
-// is a generous amount of real memory for typical chat lengths here; the full,
-// untruncated history is still captured separately in Google Sheets'
+// and can never exceed the model's context window. 40 entries (~20 user/model
+// turn pairs) was chosen from real production data (training-data/conversations.jsonl,
+// 2026-07-27 audit), not a round number: 60 covered every real conversation
+// seen so far (max 63 entries) but so does 40 — it lands at roughly the p95 of
+// real history lengths, trading a small tail of very long conversations for
+// meaningfully smaller prompts on the common case. Going lower (e.g. 20) was
+// evaluated and rejected: 16% of real logged conversations already exceed 20
+// entries, so that cap would make Sara visibly forget facts (skin type,
+// budget, name) a customer already gave earlier in the same conversation. The
+// full, untruncated history is still captured separately in Google Sheets'
 // Conversation History note and in training-data/conversations.jsonl (see
 // trainingDataLogger.js) for the 2-month data-gathering goal, regardless of
 // what's replayed into the live prompt.
-const MAX_HISTORY_TURNS = 60;
+const MAX_HISTORY_TURNS = 40;
 
 // A conversation counts as a fresh "episode" once the session has sat idle
 // this long — used to gate the returning-customer feedback ask so it can
@@ -57,6 +66,17 @@ function buildCustomerProfile(phone, previousUpdatedAt) {
 // Hard backstop against infinite loops, independent of what the model says —
 // mirrors the legacy rule engine's MAX_UNCLEAR_CONFIRMATION_ATTEMPTS pattern.
 const MAX_NO_PROGRESS_TURNS = 3;
+
+// 2026-08-02 audit fix: MAX_NO_PROGRESS_TURNS above only ever counts turns
+// while order-collection is active (see applyValidatedOutput's
+// orderCollectionActive gate) — a customer repeating the exact same message
+// ("تم" twice, observed live) outside that window sailed straight past it
+// with no escalation at all, and the bot just repeated its own canned reply
+// back. This is a separate, independent counter for exactly that case: 2
+// consecutive identical messages (the 3rd occurrence) forces a handover,
+// same "3 strikes" severity as MAX_NO_PROGRESS_TURNS, checked deterministically
+// in handleMessage before any LLM call — see there for the short-circuit.
+const MAX_CONSECUTIVE_REPEATS = 2;
 
 // 2026-07-18: deterministic ground-truth guard on SPECIALIST_REFERRAL — the
 // same "trust but verify" principle validateModelOutput already applies to
@@ -124,8 +144,13 @@ const PHONE_LIKE = /^[\d\s+()-]{8,15}$/;
 function recoverOrderDataOnFailure(session, text) {
   const orderData = session.orderData || {};
   const missingAltPhone = session.stage === STAGES.AWAIT_ORDER_DETAILS && !orderData.altPhone;
-  if (missingAltPhone && PHONE_LIKE.test(text)) {
-    return { ...orderData, altPhone: text.trim() };
+  // 2026-07-18 audit: PHONE_LIKE never routed through normalizeArabic, so a
+  // customer typing their alt phone in Arabic-Indic numerals (e.g. ٠١٠١٢٣...)
+  // silently failed to match at all — normalizeArabic now also folds those
+  // to plain digits, so this is the fix, not just a stylistic pass.
+  const normalizedText = normalizeArabic(text);
+  if (missingAltPhone && PHONE_LIKE.test(normalizedText)) {
+    return { ...orderData, altPhone: normalizedText.trim() };
   }
   return orderData;
 }
@@ -208,13 +233,21 @@ function buildSearchQuery(session, currentText) {
 // — without this, order-confirmation turns get validated-rejected for
 // referencing "a product outside this turn's candidate list" when that
 // product is exactly the one from a prior turn the model (correctly) still
-// has in mind.
-async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null } = {}) {
+// has in mind. campaignOfferProduct (2026-08-02 audit fix) is the same idea
+// applied to a campaign send: session.campaignOfferProduct is stashed by
+// campaignWorker.js's appendOfferToSessionHistory when a customer receives
+// an offer linked to a real catalog product, so a reply like "عايزة عرض
+// مبرد القدم" is always groundable/quotable even if that exact product
+// wouldn't otherwise surface from this turn's own search query.
+async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null, campaignOfferProduct = null } = {}) {
   const candidates = await productSearch.searchProducts(text, { excludeIds });
-  if (recommendedProduct && !candidates.some((p) => p.id === recommendedProduct.id)) {
-    return [recommendedProduct, ...candidates];
-  }
-  return candidates;
+  let merged = candidates;
+  [recommendedProduct, campaignOfferProduct].forEach((sticky) => {
+    if (sticky && !merged.some((p) => p.id === sticky.id)) {
+      merged = [sticky, ...merged];
+    }
+  });
+  return merged;
 }
 
 // Every mentioned product id must come from THIS turn's candidate list (never
@@ -249,7 +282,11 @@ function validateModelOutput(output, candidates, bundleComplement = null) {
   }
 
   if (output.price_quoted) {
-    const quotedDigits = output.price_quoted.replace(/\D/g, '');
+    // normalizeArabic folds Arabic-Indic digits (e.g. "١٦٠") to plain ASCII
+    // before \D strips everything else — without it, an Arabic-Indic price
+    // silently stripped to an empty string and skipped verification entirely
+    // (2026-07-18 audit).
+    const quotedDigits = normalizeArabic(output.price_quoted).replace(/\D/g, '');
     // No digits at all (e.g. the model echoed placeholder text like "غير محدد
     // بعد" instead of leaving the field empty) isn't a fabricated price claim
     // — there's nothing numeric to have invented, so don't punish an
@@ -288,7 +325,7 @@ function validateModelOutput(output, candidates, bundleComplement = null) {
       routineBundleSuggestedId = null;
       routineBundlePriceQuoted = null;
     } else if (routineBundlePriceQuoted) {
-      const quotedDigits = routineBundlePriceQuoted.replace(/\D/g, '');
+      const quotedDigits = normalizeArabic(routineBundlePriceQuoted).replace(/\D/g, '');
       const verified = !quotedDigits || String(bundleComplement.price || '').replace(/\D/g, '') === quotedDigits;
       if (!verified) {
         logger.warn(
@@ -328,7 +365,17 @@ function applyValidatedOutput(session, output, candidates, text) {
   const noProgressTurns = orderCollectionActive && !madeProgress ? (session.noProgressTurns || 0) + 1 : 0;
 
   const allFieldsPresent = Boolean(orderData.customerName && orderData.deliveryAddress && orderData.altPhone);
-  const orderConfirmed = allFieldsPresent && output.order_data.confirmed === true;
+  // Root cause of the 2026-08-02 triple-logging incident: order fields stay
+  // present in session.orderData forever once collected, and the model keeps
+  // asserting order_data.confirmed=true on later turns of the same closed
+  // conversation (e.g. a customer correcting phrasing after "تم تأكيد الطلب
+  // بنجاح") — with nothing here checking whether this session's order was
+  // already confirmed, each such turn re-triggered the full order-confirmed
+  // branch (admin notification + a new Order History/Confirmed_Orders row).
+  // session.orderPlaced is sticky for the life of the session (only ever
+  // reset to false by the escalation handler), so this makes "confirmed"
+  // fire at most once per order episode.
+  const orderConfirmed = allFieldsPresent && output.order_data.confirmed === true && !session.orderPlaced;
 
   let humanHandover = output.human_handover === true || noProgressTurns >= MAX_NO_PROGRESS_TURNS;
   // Only trusted when the MODEL itself asserted the handover (persona rule
@@ -520,12 +567,14 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
 // never does).
 function buildOrderStatusReply(statusInfo) {
   if (!statusInfo || !statusInfo.orderStatus || statusInfo.orderStatus === 'Pending') {
-    return 'لسه مفيش طلب اتأكد منك خالص يا قمر 🌸 لو حابة تطلبي أو تعرفي منتجاتنا قوليلي محتاجة ايه وأنا هساعدك.';
+    return 'لسه مفيش طلب اتأكد منك خالص 🌸 لو حابة تطلبي أو تعرفي منتجاتنا قوليلي محتاجة ايه وأنا هساعدك.';
   }
 
   const productNote = statusInfo.productName ? ` (${statusInfo.productName})` : '';
 
   switch (statusInfo.orderStatus) {
+    case 'Pending - Website Order':
+      return `طلبك اللي بعتيه من الموقع وصلنا فعلاً وجاري تجهيزه 🚀 فريقنا بيراجعه دلوقتي قبل الشحن، وهيتواصل معاكِ لو محتاجين أي تأكيد زيادة.`;
     case 'In Progress':
       return `بياناتك اتسجلت وطلبك${productNote} جاهز، محتاجين بس تأكيدك النهائي عشان نبدأ التجهيز 📝 تحبي تأكدي الطلب دلوقتي؟`;
     case 'Completed':
@@ -570,6 +619,64 @@ async function handleOrderStatusInquiry({ chatId, phone, trimmedText, history })
   };
 }
 
+// Deterministic, free, no API call (see websiteOrderDetector.js for why:
+// a recognized order's product/price/order-number facts are already fully
+// known from the parsed text — there is nothing for an AI tier to usefully
+// decide here, only hallucination risk to introduce). Logged as "Pending -
+// Website Order", not "Completed" — plain WhatsApp text has no cryptographic
+// link to a real completed transaction, so a human still glances at it
+// before dispatch (store owner's explicit call, 2026-07-30). Note the
+// website checkout flow never collects a delivery address, so the admin
+// notification flags that explicitly rather than silently leaving it blank.
+async function handleWebsiteOrder({ chatId, phone, trimmedText, session, order }) {
+  const itemsSummary = websiteOrderDetector.summarizeItems(order.items);
+  const totalLabel = order.totalPrice ? `${order.totalPrice} جنيه` : 'غير محدد';
+
+  const reply =
+    `أهلاً بيكِ 🌸 تم استلام طلبك بنجاح وجاري تجهيزه الآن 🚀\n\n` +
+    `رقم الطلب: ${order.orderNumber || 'غير محدد'}\n` +
+    `المنتجات: ${itemsSummary || 'غير محدد'}\n` +
+    `الإجمالي: ${totalLabel}\n\n` +
+    `لو محتاجة أي تفاصيل زيادة أو حابة تتابعي حالة الطلب، أنا هنا 🌸`;
+
+  const history = (session.llm && session.llm.history) || [];
+  const historyAfterUser = pushHistory(history, 'user', trimmedText);
+  const historyAfterModel = pushHistory(historyAfterUser, 'assistant', reply);
+
+  updateSession(chatId, {
+    websiteOrder: { ...order, itemsSummary, receivedAt: Date.now() },
+    stage: STAGES.CLOSED,
+    noProgressTurns: 0,
+    customerName: order.customerName || session.customerName,
+    llm: { history: historyAfterModel },
+  });
+
+  const adminNotification =
+    `🛒 طلب جديد من الموقع (Pending — يحتاج مراجعة قبل الشحن)\n` +
+    `رقم الطلب: ${order.orderNumber || 'غير محدد'}\n` +
+    `الاسم: ${order.customerName || 'غير محدد'}\n` +
+    `التليفون: ${order.phone || phone}\n` +
+    `المنتجات: ${itemsSummary || 'غير محدد'}\n` +
+    `الإجمالي: ${totalLabel}\n` +
+    `⚠️ الموقع مبيجمعش عنوان التوصيل — لازم ياخده حد من الفريق من العميلة قبل الشحن.` +
+    (order.orderNotes ? `\nملاحظات العميلة: ${order.orderNotes}` : '');
+
+  return {
+    reply,
+    logEntry: {
+      ...baseLogFields(getSession(chatId), phone, trimmedText),
+      customerName: order.customerName || session.customerName || '',
+      productName: itemsSummary,
+      altPhone: order.phone && order.phone !== phone ? order.phone : '',
+      orderStatus: 'Pending - Website Order',
+      notes:
+        `طلب من الموقع — رقم الطلب ${order.orderNumber || 'غير محدد'}, يحتاج مراجعة قبل الشحن (مفيش عنوان توصيل من الموقع).` +
+        (order.orderNotes ? ` ملاحظات العميلة: ${order.orderNotes}` : ''),
+    },
+    adminNotification,
+  };
+}
+
 async function handleMessage({ chatId, phone, text, senderName }) {
   const session = getSession(chatId);
   // Captured before anything this turn touches the session — updateSession()
@@ -593,6 +700,44 @@ async function handleMessage({ chatId, phone, text, senderName }) {
       orderPlaced: false,
     });
     return buildEscalationResponse(getSession(chatId), phone, trimmedText);
+  }
+
+  // Deterministic repetition-loop guard (2026-08-02 audit fix) — a customer
+  // repeating their exact previous message verbatim is checked against
+  // session state as it stood BEFORE this turn (session.llm.history hasn't
+  // been updated with trimmedText yet). normalizeArabic keeps this in sync
+  // with how digit/text comparisons elsewhere in this file are normalized,
+  // so trivial Arabic-Indic-digit or whitespace differences don't defeat it.
+  const priorUserTurns = ((session.llm && session.llm.history) || []).filter((turn) => turn.role === 'user');
+  const lastUserText = priorUserTurns.length > 0 ? priorUserTurns[priorUserTurns.length - 1].content : null;
+  const isRepeatedMessage = Boolean(trimmedText && lastUserText && normalizeArabic(lastUserText).trim() === normalizeArabic(trimmedText).trim());
+  const consecutiveRepeats = isRepeatedMessage ? (session.consecutiveRepeats || 0) + 1 : 0;
+
+  if (consecutiveRepeats >= MAX_CONSECUTIVE_REPEATS) {
+    updateSession(chatId, {
+      humanHandover: true,
+      humanHandoffAt: Date.now(),
+      stage: STAGES.CLOSED,
+      noProgressTurns: 0,
+      consecutiveRepeats: 0,
+    });
+    return {
+      reply: 'حسيت إن ردودي مش بتوصلك صح 🌸 خليني أوصلك بفريقنا يقدروا يساعدوك بشكل مباشر أكتر.',
+      logEntry: {
+        ...baseLogFields(getSession(chatId), phone, trimmedText),
+        notes: `العميل كرر نفس الرسالة ${consecutiveRepeats + 1} مرات متتالية من غير تقدم — تم التحويل تلقائيًا لفريق بشري`,
+      },
+      adminNotification: `🔁 عميل كرر نفس الرسالة عدة مرات من غير رد مفيد — تم التحويل تلقائيًا\nرقم العميل: ${phone}\nالرسالة: ${trimmedText}`,
+    };
+  }
+
+  // Deterministic, free, no API call — see websiteOrderDetector.js. Checked
+  // early, same priority tier as escalation above: a recognized website
+  // order is a very specific structural signal that should short-circuit
+  // immediately rather than fall through to the general LLM flow.
+  const websiteOrder = websiteOrderDetector.parseWebsiteOrder(trimmedText);
+  if (websiteOrder) {
+    return handleWebsiteOrder({ chatId, phone, trimmedText, session, order: websiteOrder });
   }
 
   // A "did it arrive ok?" follow-up left unanswered for 48h+ is stale — a
@@ -675,6 +820,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const candidates = await selectCandidatesForTurn(searchQuery, {
     excludeIds: session.shownProductIds || [],
     recommendedProduct: session.recommendedProduct,
+    campaignOfferProduct: session.campaignOfferProduct,
   });
   // Routine-bundle upsell: only offered off the top (best-matched) candidate,
   // and only if it isn't already one of the two products in the bundle pair
@@ -684,12 +830,22 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const validBundleComplement =
     bundleComplement && !(session.shownProductIds || []).includes(bundleComplement.id) ? bundleComplement : null;
   const customerProfile = buildCustomerProfile(phone, previousUpdatedAt);
+  const websiteOrderForPrompt = session.websiteOrder
+    ? { ...session.websiteOrder, itemsSummary: websiteOrderDetector.summarizeItems(session.websiteOrder.items) }
+    : null;
   const systemInstruction = buildSystemPrompt(
     candidates,
     validBundleComplement,
     Boolean(session.secondNudgeSentAt),
     customerProfile,
-    Boolean(session.awaitingDeliveryFeedback)
+    Boolean(session.awaitingDeliveryFeedback),
+    websiteOrderForPrompt,
+    campaignKnowledge.getActiveOffers(),
+    // Soft repetition-loop nudge — exactly the 2nd identical message in a
+    // row (the hard MAX_CONSECUTIVE_REPEATS handover above only fires on the
+    // 3rd), so the model gets one chance to break the loop itself before the
+    // deterministic escalation takes over.
+    consecutiveRepeats === 1
   );
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', content: trimmedText }];
@@ -758,6 +914,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     updateSession(chatId, {
       llm: { history: historyAfterUser },
       orderData: recoveredOrderData,
+      consecutiveRepeats,
     });
 
     const logEntry = {
@@ -807,6 +964,10 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     customerName: applied.orderData.customerName || session.customerName,
     deliveryAddress: applied.orderData.deliveryAddress || session.deliveryAddress,
     llm: { history: historyAfterModel },
+    // Persists the repetition count computed near the top of this function
+    // (0 if this turn's message didn't repeat the last one) so next turn's
+    // comparison has the right running count — see MAX_CONSECUTIVE_REPEATS.
+    consecutiveRepeats,
   });
 
   const { logEntry, adminNotification, orderHistoryEntry } = buildLogEntryAndNotification(

@@ -43,6 +43,10 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--max-steps", type=int, default=-1)
     p.add_argument("--epochs", type=float, default=2.0)
+    p.add_argument("--max-seq-length", type=int, default=1024,
+                    help="truncate tokenized examples to this many tokens to bound the lm_head logits tensor (vocab_size=151936 makes long sequences memory-heavy)")
+    p.add_argument("--resume-from-checkpoint", type=str, default=None,
+                    help="path to a lora_out/checkpoint-N dir to resume optimizer/scheduler/RNG state from")
     return p.parse_args()
 
 
@@ -70,7 +74,8 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(BASE_MODEL, torch_dtype=torch.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained(BASE_MODEL, dtype=torch.bfloat16, attn_implementation="sdpa")
+    model.config.use_cache = False
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
 
@@ -86,7 +91,17 @@ def main():
 
     train_ds = load_from_disk(os.path.join(DATASET_DIR, "train"))
     val_ds = load_from_disk(os.path.join(DATASET_DIR, "val"))
-    print(f"Train examples: {len(train_ds)}  Val examples: {len(val_ds)}")
+
+    def truncate(example):
+        # Keep the tail, not the head: loss is masked to the final assistant
+        # completion (see prepare_data.py), which sits at the end of the
+        # sequence, so a head-truncation would cut off the only supervised
+        # tokens and leave an all -100 label row (nan loss).
+        return {k: v[-args.max_seq_length :] if isinstance(v, list) else v for k, v in example.items()}
+
+    train_ds = train_ds.map(truncate)
+    val_ds = val_ds.map(truncate)
+    print(f"Train examples: {len(train_ds)}  Val examples: {len(val_ds)}  (truncated to {args.max_seq_length} tokens)")
 
     collator = DataCollatorForSeq2Seq(tokenizer, model=model, padding=True, label_pad_token_id=-100)
 
@@ -119,7 +134,7 @@ def main():
     )
 
     print("Starting training...")
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
     final_dir = os.path.join(OUTPUT_DIR, "final")
     trainer.save_model(final_dir)

@@ -2,40 +2,40 @@
  * One-time (re-runnable/idempotent) visual + operational upgrade for the
  * "Leads" tab of the "Beauty Hub October Sales" Google Sheet.
  *
- * Deliberately does NOT physically reorder columns: src/services/googleSheets.js's
- * appendLead() writes new/updated rows to fixed positions (A:K, with J
- * reserved as a staff-owned manual column it never touches). Moving columns
- * around in the Sheet UI would silently desync those positions from what the
- * bot writes on the next lead, corrupting live data. Instead, this makes the
- * core operational columns (Customer Name, Phone, Order Status, Notes) pop
- * visually via a distinct header highlight, while leaving column order and
- * all existing cell values untouched.
+ * Current layout (2026-07-16, verified live — see the fuller HISTORY note in
+ * src/services/googleSheets.js next to LEADS_HEADERS, which is the actual
+ * source of truth appendLead() writes against): A Date, B Customer Name, C
+ * Customer WhatsApp Number, D Alternative Phone, E Product Name, F Customer
+ * Need, G Delivery Address, H Order Status, I Notes, J Conversation History,
+ * K Follow-up Date.
  *
- * Adds one new column, L "Follow-up Date" — appended after the existing K
- * (Conversation History), so it's outside the A:K range appendLead() writes
- * to and is exclusively staff-maintained, same pattern as J ("human
- * interaction").
+ * This tab HAS been physically reordered (twice, on the store owner's
+ * explicit request) since this script was first written, and had a column
+ * deleted (Customer Message). If you're re-running this after another
+ * structural change, update CORE_COLUMN_INDEXES/TOTAL_COLUMNS below to match
+ * the live header first — don't assume they're still correct.
  *
  * What it does:
  *   1. Freezes the header row.
- *   2. Adds "Follow-up Date" as a new manual column (L), date-formatted.
- *   3. Styles the header row (dark bg, white bold text), with the core
- *      lead-tracking columns (Customer Name, Phone, Order Status, Notes,
- *      Follow-up Date) highlighted in a distinct accent color.
- *   4. Zebra-stripes the data rows (banded range, header excluded since it's
- *      already styled in step 3).
- *   5. Adds a dropdown (non-strict — won't reject any existing/future value
- *      outside the list) on Order Status with the seven values actually used
+ *   2. Styles the header row (dark bg, white bold text), with the core
+ *      lead-tracking columns (Customer Name, Phone, Alternative Phone,
+ *      Order Status, Notes, Follow-up Date) highlighted in a distinct
+ *      accent color.
+ *   3. Zebra-stripes the data rows (banded range, header excluded since it's
+ *      already styled in step 2).
+ *   4. Adds a dropdown (non-strict — won't reject any existing/future value
+ *      outside the list) on Order Status with the eight values actually used
  *      by the codebase, in lifecycle order: Pending / In Progress / Out for
- *      Delivery / Delivered / Completed / Issue / Cancelled.
- *   6. Adds soft conditional-formatting colors on Order Status: blue for
+ *      Delivery / Delivered / Completed / Issue / Needs Specialist / Cancelled.
+ *   5. Adds soft conditional-formatting colors on Order Status: blue for
  *      Pending, yellow for In Progress, orange for Out for Delivery, cyan
- *      for Delivered, green for Completed, purple for Issue, red for
- *      Cancelled.
- *   7. Auto-resizes all columns so nothing is clipped.
+ *      for Delivered, green for Completed, purple for Issue, pink for Needs
+ *      Specialist, red for Cancelled.
+ *   6. Auto-resizes all columns so nothing is clipped.
  *
- * Touches only the Leads tab's formatting/structure — no other tab, and no
- * existing cell values.
+ * Touches only the Leads tab's formatting — no other tab, and no existing
+ * cell values (column order/existence changes are made directly via the
+ * Sheets API moveDimension/deleteDimension elsewhere, not by this script).
  *
  * Usage: node scripts/formatLeadsSheet.js
  */
@@ -46,17 +46,18 @@ const logger = require('../src/utils/logger');
 
 const LEADS_SHEET_NAME = 'Leads';
 const HEADER_ROW_COUNT = 1;
-const TOTAL_COLUMNS = 12; // A..L (see the LEADS_HEADERS correction note in googleSheets.js — "human interaction" was removed, Alternative Phone added, net column count unchanged)
+const TOTAL_COLUMNS = 12; // A..L (2026-08-03: added Staff Notes)
 
 // Columns (0-indexed) considered the "core" operational set for daily
 // follow-up — highlighted distinctly in the header row.
 const CORE_COLUMN_INDEXES = {
   customerName: 1, // B
   phone: 2, // C
-  orderStatus: 6, // G
+  altPhone: 3, // D
+  orderStatus: 7, // H
   notes: 8, // I
   followUpDate: 10, // K
-  altPhone: 11, // L (new)
+  staffNotes: 11, // L — 2026-08-03 P1 addition, see LEADS_HEADERS in googleSheets.js
 };
 
 const HEADER_BG = { red: 0.204, green: 0.286, blue: 0.369 }; // slate navy #34495e
@@ -81,11 +82,16 @@ const STATUS_CYAN_BG = { red: 0.816, green: 0.878, blue: 0.89 }; // #D0E0E3 — 
 const STATUS_CYAN_TEXT = { red: 0.047, green: 0.204, blue: 0.239 }; // #0C343D
 const STATUS_PURPLE_BG = { red: 0.851, green: 0.824, blue: 0.914 }; // #D9D2E9 — Issue: needs attention now (distinct from Cancelled's plain red)
 const STATUS_PURPLE_TEXT = { red: 0.125, green: 0.071, blue: 0.302 }; // #20124D
+const STATUS_PINK_BG = { red: 0.949, green: 0.796, blue: 0.878 }; // #F2CBE0 — Needs Specialist: pre-purchase referral, distinct from Issue's delivery-problem purple
+const STATUS_PINK_TEXT = { red: 0.404, green: 0.055, blue: 0.263 }; // #670E43
 
-// Sequential lifecycle order, per the store owner's spec (2026-07-16):
+// Sequential lifecycle order, per the store owner's spec (2026-07-16), plus
+// "Needs Specialist" (2026-07-18, AI skin-consultation ad launch) — a
+// pre-purchase referral out of the flow entirely, so it sits with the other
+// off-lifecycle status (Issue) rather than in the pack/ship/deliver sequence:
 // data collection -> ready to pack -> shipped -> dropped off -> customer
 // confirmed OR flagged a problem -> (or cancelled at any point).
-const ORDER_STATUS_OPTIONS = ['Pending', 'In Progress', 'Out for Delivery', 'Delivered', 'Completed', 'Issue', 'Cancelled'];
+const ORDER_STATUS_OPTIONS = ['Pending', 'In Progress', 'Out for Delivery', 'Delivered', 'Completed', 'Issue', 'Needs Specialist', 'Cancelled'];
 
 async function getLeadsSheetId(sheets) {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: config.googleSheetId });
@@ -192,6 +198,7 @@ function orderStatusConditionalFormatRequests(sheetId, rowCount) {
     rule('Out for Delivery', STATUS_ORANGE_BG, STATUS_ORANGE_TEXT),
     rule('Delivered', STATUS_CYAN_BG, STATUS_CYAN_TEXT),
     rule('Issue', STATUS_PURPLE_BG, STATUS_PURPLE_TEXT),
+    rule('Needs Specialist', STATUS_PINK_BG, STATUS_PINK_TEXT),
   ];
 }
 

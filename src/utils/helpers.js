@@ -1,3 +1,13 @@
+// Arabic-Indic (٠-٩) and Extended Arabic-Indic/Persian (۰-۹) digits, mapped
+// to plain ASCII so every existing \d/\D-based regex in the codebase
+// (PHONE_LIKE, price-digit stripping in llmAgent.js's validateModelOutput,
+// etc.) keeps working unchanged instead of silently treating them as
+// non-digits — 2026-07-18 audit: verified '١٦٠'.replace(/\D/g,'') produced
+// an empty string, and PHONE_LIKE failed to match an otherwise-valid
+// Arabic-Indic phone number, before this fix.
+const ARABIC_INDIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+const EXTENDED_ARABIC_INDIC_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+
 function normalizeArabic(text) {
   if (!text) return '';
   return text
@@ -9,7 +19,10 @@ function normalizeArabic(text) {
     .replace(/ة/g, 'ه')
     .replace(/ؤ/g, 'و')
     .replace(/ئ/g, 'ي')
+    .replace(/ـ/g, '') // strip tatweel/kashida (stylistic elongation, e.g. "حبـــوب")
     .replace(/[ً-ْ]/g, '') // strip Arabic diacritics
+    .replace(/[٠-٩]/g, (d) => String(ARABIC_INDIC_DIGITS.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String(EXTENDED_ARABIC_INDIC_DIGITS.indexOf(d)))
     .replace(/\s+/g, ' ');
 }
 

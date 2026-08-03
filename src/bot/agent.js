@@ -349,7 +349,7 @@ function handleAwaitOrderConfirmation(session, text, phone) {
       `آخر رسالة: ${text}\n` +
       `المرحلة: ${session.stage}`;
     return {
-      reply: 'حاسة إن في لخبطة شوية يا قمر 🌸 هبعتلك حد من فريقنا يتواصل معاكي علشان نتأكد من طلبك صح.',
+      reply: 'حاسة إن في لخبطة شوية 🌸 هبعتلك حد من فريقنا يتواصل معاكي علشان نتأكد من طلبك صح.',
       logEntry,
       adminNotification,
     };

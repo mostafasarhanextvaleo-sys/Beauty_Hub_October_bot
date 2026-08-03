@@ -11,6 +11,8 @@ const { getSession, getAllSessions, isHumanHandoffCooldownActive } = require('..
 const { getMediaNoCaptionReply, getMediaCaptionPrefix } = require('../bot/prompts');
 const adminCommands = require('../bot/adminCommands');
 const botControl = require('../bot/botControl');
+const emailAlert = require('../utils/emailAlert');
+const campaignWorker = require('../bot/campaignWorker');
 
 // --- Admin broadcast/campaign feature — safety rails (see conversation with
 // the store owner 2026-07-14: whatsapp-web.js is an unofficial client, and
@@ -69,9 +71,20 @@ function extractOfferText(rawText) {
 // against config.adminWhatsappNumber silently fails to exclude the admin.
 // Resolve the real phone the same way the regular message handler already
 // does, falling back to the raw chatId only if resolution fails.
+// 2026-07-30 incident: this is called once per stored session, serially, by
+// both getBroadcastRecipients and deliveryFollowup.js's buildPhoneToChatIdMap
+// — with no timeout, a single hung puppeteer call (the exact symptom of a
+// wedged renderer) stalled every remaining session behind it, turning a scan
+// that should take seconds into one that never finished. RESOLVE_TIMEOUT_MS
+// bounds each call so one stuck contact can't block the rest of the batch.
+const RESOLVE_PHONE_TIMEOUT_MS = 8000;
+
 async function resolveRealPhone(chatId) {
   try {
-    const [resolved] = await client.getContactLidAndPhone([chatId]);
+    const [resolved] = await Promise.race([
+      client.getContactLidAndPhone([chatId]),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('resolveRealPhone timed out')), RESOLVE_PHONE_TIMEOUT_MS)),
+    ]);
     if (resolved && resolved.pn) return sanitizePhoneNumber(resolved.pn);
   } catch (err) {
     logger.warn(`Could not resolve real phone number for broadcast candidate ${chatId}, using chat ID as-is.`);
@@ -246,6 +259,36 @@ function getStatus() {
   return status;
 }
 
+// 2026-08-03 P0 fix: index.js used to start cartRecovery/deliveryFollowup/
+// campaignWorker's timers unconditionally in main(), before WhatsApp ever
+// finished authenticating — their first tick(s) could fire while
+// sendMessageToChatId still threw "WhatsApp client is not connected.", and
+// each scheduler had its own gap in how it handled that (see each module's
+// own 2026-08-03 fix comments). Gating their *first* start on this instead
+// of on a fixed delay means they come up as soon as WhatsApp is actually
+// ready, however long that takes (instant reconnect vs. a fresh QR scan).
+// Deliberately fires only once (readyCallbacks is drained and cleared) —
+// this only needs to gate the very first start, not restart the schedulers
+// on every later reconnect, which would duplicate their setInterval timers.
+let readyCallbacks = [];
+let hasBeenReady = false;
+
+function onReady(callback) {
+  if (hasBeenReady) {
+    callback();
+    return;
+  }
+  readyCallbacks.push(callback);
+}
+
+function fireReadyCallbacksOnce() {
+  if (hasBeenReady) return;
+  hasBeenReady = true;
+  const callbacks = readyCallbacks;
+  readyCallbacks = [];
+  callbacks.forEach((cb) => cb());
+}
+
 function toWhatsAppJid(phoneOrJid) {
   return phoneOrJid.includes('@') ? phoneOrJid : `${phoneOrJid}@c.us`;
 }
@@ -259,6 +302,83 @@ async function notifyAdmin(text) {
   } catch (err) {
     logger.error('Failed to send admin notification. The bot continues running normally.', err);
   }
+}
+
+// --- Health watchdog (added 2026-07-30 incident response) ---
+// The 'disconnected'/'auth_failure' events above only fire when WhatsApp's
+// own client-side JS reports a state change. The 2026-07-30 incident showed
+// a failure mode those events never catch: the underlying Puppeteer/Chrome
+// renderer's JS thread got wedged (confirmed via `ps` — a pinned near-100%
+// CPU renderer, unrelated to WhatsApp session state), so every
+// page.evaluate() call whatsapp-web.js makes (sendMessage, getState, ...)
+// silently hung until Puppeteer's own protocol timeout, while `status`
+// stayed 'connected' the whole time and PM2 saw a perfectly healthy process.
+// Real customer replies stopped for 13+ hours with nothing surfacing it.
+// This periodically proves liveness with the same evaluate() mechanism
+// (client.getState()) under a short timeout, and if it's stuck for several
+// consecutive checks, self-exits so PM2 relaunches with a fresh browser —
+// deliberately not attempting client.destroy() first, since a wedged
+// renderer is exactly the condition under which destroy() itself can hang
+// (the graceful SIGTERM shutdown() path already has a 7s cap on that for the
+// normal-shutdown case; this path assumes the worst and just exits).
+const HEALTH_CHECK_INTERVAL_MS = 3 * 60 * 1000;
+const HEALTH_CHECK_TIMEOUT_MS = 20 * 1000;
+const MAX_CONSECUTIVE_HEALTH_FAILURES = 3; // ~9-12 min of proven unresponsiveness before acting
+
+let healthWatchdogTimer = null;
+let consecutiveHealthFailures = 0;
+let restartingForUnresponsiveClient = false;
+
+function withHealthCheckTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Health check timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function runHealthCheck() {
+  if (!client || status !== 'connected' || restartingForUnresponsiveClient) return;
+  try {
+    await withHealthCheckTimeout(client.getState(), HEALTH_CHECK_TIMEOUT_MS);
+    consecutiveHealthFailures = 0;
+  } catch (err) {
+    consecutiveHealthFailures += 1;
+    logger.error(
+      `WhatsApp health check failed (${consecutiveHealthFailures}/${MAX_CONSECUTIVE_HEALTH_FAILURES}) — client may be unresponsive despite status="connected".`,
+      err
+    );
+    if (consecutiveHealthFailures >= MAX_CONSECUTIVE_HEALTH_FAILURES) {
+      await forceRestartUnresponsiveClient();
+    }
+  }
+}
+
+async function forceRestartUnresponsiveClient() {
+  if (restartingForUnresponsiveClient) return;
+  restartingForUnresponsiveClient = true;
+  const minutesStuck = Math.round((HEALTH_CHECK_INTERVAL_MS * MAX_CONSECUTIVE_HEALTH_FAILURES) / 60000);
+  logger.error(
+    `WhatsApp client unresponsive for ~${minutesStuck} min despite reporting "connected" — this is the silent-hang failure mode. Exiting now so PM2 restarts with a clean browser.`
+  );
+  await emailAlert.sendAlert('whatsapp_unresponsive', {
+    subject: '🚨 Beauty Hub Bot — WhatsApp client hung, auto-restarting',
+    text:
+      `The WhatsApp client stopped responding to internal health checks (${consecutiveHealthFailures} consecutive timeouts, ~${minutesStuck} min) ` +
+      `even though it still reported "connected" — the underlying Chrome renderer got wedged. ` +
+      `The bot process is exiting now so PM2 restarts it with a fresh browser. Customer replies were likely blocked until this restart completed.`,
+  });
+  // Same log-drain delay used elsewhere before process.exit() (src/index.js).
+  setTimeout(() => process.exit(1), 300);
+}
+
+function startHealthWatchdog() {
+  if (healthWatchdogTimer) clearInterval(healthWatchdogTimer);
+  consecutiveHealthFailures = 0;
+  healthWatchdogTimer = setInterval(() => {
+    runHealthCheck().catch((err) => logger.error('Health watchdog crashed unexpectedly.', err));
+  }, HEALTH_CHECK_INTERVAL_MS);
+  if (healthWatchdogTimer.unref) healthWatchdogTimer.unref();
 }
 
 function createClient() {
@@ -296,6 +416,15 @@ function createClient() {
   client.on('ready', () => {
     status = 'connected';
     logger.success('WhatsApp connected.');
+    restartingForUnresponsiveClient = false;
+    startHealthWatchdog();
+    // Needs a live, authenticated session (resolveRealPhone hits the same
+    // puppeteer/CDP path as everything else here) — idempotent, so this is
+    // safe to call on every reconnect, not just the first.
+    campaignWorker.seedTargetedClientsOnce(resolveRealPhone).catch((err) => {
+      logger.error('Targeted_Clients seeding failed.', err);
+    });
+    fireReadyCallbacksOnce();
   });
 
   client.on('authenticated', () => {
@@ -305,11 +434,19 @@ function createClient() {
   client.on('auth_failure', (message) => {
     status = 'auth_failure';
     logger.error(`WhatsApp authentication failure: ${message}`);
+    emailAlert.sendAlert('whatsapp_auth_failure', {
+      subject: '🚨 Beauty Hub Bot — WhatsApp authentication failed',
+      text: `WhatsApp authentication failed: ${message}\n\nThe bot cannot send or receive messages until this is fixed — this usually needs a fresh QR scan (check pm2 logs beauty-hub-bot for the QR code).`,
+    });
   });
 
   client.on('disconnected', (reason) => {
     status = 'disconnected';
     logger.warn(`WhatsApp disconnected: ${reason}. Attempting to reinitialize...`);
+    emailAlert.sendAlert('whatsapp_disconnected', {
+      subject: '⚠️ Beauty Hub Bot — WhatsApp disconnected',
+      text: `WhatsApp disconnected (reason: ${reason}). The bot is attempting to automatically reinitialize in 5 seconds. If this doesn't resolve on its own, customer replies are blocked until it does.`,
+    });
     setTimeout(() => {
       try {
         client.initialize();
@@ -330,10 +467,34 @@ function createClient() {
       if (message.type && message.type !== 'chat' && !RECOGNIZED_MEDIA_TYPES.has(message.type)) {
         return;
       }
+      // 2026-08-03 P1 addition — Targeted_Clients!Blocked: a hard blocklist,
+      // checked before absolutely anything else (even auto-capture/logging,
+      // unlike "Bot Paused" below which still records the contact normally).
+      // Meant for spam/abusive numbers the owner wants the bot to fully
+      // ignore, as if the message never arrived.
+      if (campaignWorker.isContactBlocked(message.from)) {
+        return;
+      }
 
       // Serialize per-chat: if the same customer sends a burst of messages,
       // process them one at a time so they can't race on conversation state.
       await runExclusive(message.from, async () => {
+        // Fire-and-forget, never awaited here — a real customer's reply must
+        // never be delayed or blocked by a Sheets write to Targeted_Clients.
+        // Errors are contained entirely inside campaignWorker.handleInboundMessage
+        // itself. Deliberately called from *inside* this lock (not before it,
+        // which is where this used to sit) — handleInboundMessage now takes
+        // this same per-chatId lock internally (2026-08-03 concurrency fix,
+        // see campaignWorker.js) to serialize against campaignWorker's other
+        // Targeted_Clients writers. Calling it before this lock existed would
+        // let its internal lock acquisition register on the same key first
+        // and force this reply's own processing to queue behind a Sheets
+        // round-trip — exactly the delay this comment has always warned
+        // against. Since the outer lock here is already the current holder
+        // by the time this fires, the nested acquisition just queues to run
+        // after this turn finishes, with no such delay.
+        campaignWorker.handleInboundMessage(message.from, message.body || '');
+
         const receivedAt = Date.now();
         const contact = await message.getContact().catch(() => null);
         const senderName = (contact && (contact.pushname || contact.name)) || '';
@@ -378,6 +539,14 @@ function createClient() {
           return;
         }
 
+        // Fire-and-forget, same reasoning as handleInboundMessage above — a
+        // real customer's reply must never be delayed or blocked by a Sheets
+        // write. Auto-captures any brand-new contact into Targeted_Clients
+        // (see campaignWorker.captureInboundLead) so no one who messages us
+        // is missed for future offer campaigns, regardless of whether the
+        // bot is paused or in human-handoff cooldown for them right now.
+        campaignWorker.captureInboundLead(message.from, { phone, senderName, text: logText });
+
         // Human handoff cooldown (2026-07-16 spec): once this specific
         // customer has been handed to a human agent, the bot goes
         // completely silent for them for 24 hours — no LLM call, no reply,
@@ -389,6 +558,17 @@ function createClient() {
         // global, and the more specific check should win first.
         if (isHumanHandoffCooldownActive(getSession(message.from))) {
           logger.info(`Ignoring message from ${phone} — human handoff cooldown active (started ${new Date(getSession(message.from).humanHandoffAt).toISOString()}).`);
+          return;
+        }
+
+        // 2026-08-03 P1 addition — Targeted_Clients!"Bot Paused (this
+        // contact)": same per-customer-before-global priority reasoning as
+        // the human handoff cooldown above, and checked right alongside it —
+        // this is the sheet-driven equivalent for an owner who wants to
+        // silence the bot for one specific customer without waiting for an
+        // automatic handoff or pausing it for everyone via "وقف البوت".
+        if (campaignWorker.isBotPausedForContact(message.from)) {
+          logger.info(`Ignoring message from ${phone} — Bot Paused is set for this contact in Targeted_Clients.`);
           return;
         }
 
@@ -456,6 +636,22 @@ function createClient() {
           // (one row per completed order), powering the returning-customer
           // memory feature in llmAgent.js. See googleSheets.logOrderHistory.
           await googleSheets.logOrderHistory(orderHistoryEntry);
+          // Additive campaign hook — only touches Confirmed_Orders/
+          // Targeted_Clients if this chat happens to be a campaign target;
+          // never blocks or fails the real order logging above. Address comes
+          // from logEntry (deliveryAddress), not orderHistoryEntry, which
+          // doesn't carry it — see buildLogEntryAndNotification in llmAgent.js.
+          campaignWorker
+            .handleOrderConfirmed(message.from, {
+              customerName: orderHistoryEntry.customerName,
+              phone: orderHistoryEntry.phone,
+              address: logEntry && logEntry.deliveryAddress,
+              products: orderHistoryEntry.productName,
+              totalPrice: orderHistoryEntry.price,
+            })
+            .catch((err) => {
+              logger.error('Campaign Confirmed_Orders logging failed (order itself was still logged normally).', err);
+            });
         }
 
         if (adminNotification) {
@@ -482,6 +678,7 @@ async function sendMessageToChatId(chatId, text) {
 // subprocess and its session profile lock get torn down cleanly instead of
 // being left behind for the next restart to collide with.
 async function destroy() {
+  if (healthWatchdogTimer) clearInterval(healthWatchdogTimer);
   if (!client) return;
   try {
     await client.destroy();
@@ -496,5 +693,7 @@ module.exports = {
   getStatus,
   sendMessageToChatId,
   buildPhoneToChatIdMap,
+  resolveRealPhone,
   destroy,
+  onReady,
 };

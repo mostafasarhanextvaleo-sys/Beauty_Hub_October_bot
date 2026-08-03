@@ -8,6 +8,15 @@ const { STAGES, isHumanHandoffCooldownActive } = conversationMemory;
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // how often we scan for idle chats
 
+// 2026-07-30 incident: one broken contact (259944993525773@lid — send always
+// throws) got retried every CHECK_INTERVAL_MS with no backoff or cap, for
+// 13+ hours straight — each attempt a real puppeteer sendMessage call, which
+// piled onto the same wedged-renderer failure that also blocked real
+// customers. A permanently-failing send is a signal to stop, not retry
+// forever: after this many consecutive failures we give up on that chat's
+// nudge rather than keep hammering the client.
+const MAX_CONSECUTIVE_NUDGE_FAILURES = 3;
+
 // Only nudge customers who saw a recommendation, were asked for order details,
 // or just need to confirm their order — not people still mid-way through Q&A,
 // who haven't been given anything to decide on yet.
@@ -28,8 +37,8 @@ function pickVariant(variants) {
 // message ("لسه مهتمة بكذا؟") never mentioned the price the customer was
 // actually deciding on, which is the single most persuasive fact available.
 const FIRST_NUDGE_WITH_PRICE = [
-  { id: 'nudge1_price_a', text: (name, price) => `يا قمر، الـ${name} اللي سألتي عليه لسه محجوز عشانك بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟` },
-  { id: 'nudge1_price_b', text: (name, price) => `هاي يا قمر، لسه فاكراك مهتمة بـ${name} (${price} جنيه) — محتاجة أي تفاصيل زيادة؟` },
+  { id: 'nudge1_price_a', text: (name, price) => `الـ${name} اللي سألتي عليه لسه محجوز عشانك بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟` },
+  { id: 'nudge1_price_b', text: (name, price) => `هاي، لسه فاكراك مهتمة بـ${name} (${price} جنيه) — محتاجة أي تفاصيل زيادة؟` },
 ];
 
 // Second nudge: only sent if the first got no reply. The incentive here is
@@ -46,12 +55,12 @@ const SECOND_NUDGE_WITH_PRICE = [
   {
     id: 'nudge2_shipping_a',
     text: (name, price) =>
-      `يا قمر، الـ${name} اللي سألتي عليه لسه محجوز عشانك بـ${price} جنيه بس! 🌸 أكدي الأوردر خلال 24 ساعة كده وهضيفلك توصيل مجاني هدية مني ليكي 💕`,
+      `الـ${name} اللي سألتي عليه لسه محجوز عشانك بـ${price} جنيه بس! 🌸 أكدي الأوردر خلال 24 ساعة كده وهضيفلك توصيل مجاني هدية منا ليكي.`,
   },
   {
     id: 'nudge2_shipping_b',
     text: (name, price) =>
-      `لسه فاكراك يا قمر 💕 ${name} (${price} جنيه) في انتظارك — أكدي دلوقتي وهعملك توصيل مجاني كهدية بسيطة مني، إيه رأيك؟`,
+      `لسه فاكراك 🌸 ${name} (${price} جنيه) في انتظارك — أكدي دلوقتي وهعملك توصيل مجاني كهدية بسيطة منا، إيه رأيك؟`,
   },
 ];
 
@@ -59,7 +68,7 @@ const SECOND_NUDGE_WITH_PRICE = [
 // category Q&A when they went idle) — same for both stages, matches the
 // original single message.
 const GENERIC_NUDGE = [
-  { id: 'nudge_generic', text: () => 'هاي يا قمر 🌸 لسه محتاجة مساعدة في حاجة؟ أنا موجودة لو حابة تكملي.' },
+  { id: 'nudge_generic', text: () => 'هاي 🌸 لسه محتاجة مساعدة في حاجة؟ أنا موجودة لو حابة تكملي.' },
 ];
 
 function buildNudgeMessage(session, nudgeStage) {
@@ -101,6 +110,7 @@ async function scanAndSendNudges(sendMessageFn) {
     // CLOSED) — named directly after the 24h cooldown concept so the intent
     // reads clearly even if the stage/humanHandover logic changes later.
     if (isHumanHandoffCooldownActive(session)) continue;
+    if (session.nudgeGaveUp) continue;
     if (!dueNudgeStage(session, now)) continue;
 
     // eslint-disable-next-line no-await-in-loop
@@ -110,6 +120,7 @@ async function scanAndSendNudges(sendMessageFn) {
       const fresh = conversationMemory.getSession(chatId);
       if (!NUDGE_ELIGIBLE_STAGES.has(fresh.stage)) return;
       if (isHumanHandoffCooldownActive(fresh)) return;
+      if (fresh.nudgeGaveUp) return;
       // Belt-and-suspenders independent of stage mapping — a free-form LLM
       // conversation doesn't have a rigid linear machine underneath it, so
       // this guards directly against ever nudging a completed/handed-off chat
@@ -124,13 +135,13 @@ async function scanAndSendNudges(sendMessageFn) {
         // Nudges are sent outside llmAgent.handleMessage, so without this the
         // LLM agent has no idea a nudge (or the product it named) was ever
         // sent — a reply like "نعم بيعمل ايه؟" would leave it with nothing to
-        // resolve "it" against. Record it as a model turn so the next real
+        // resolve "it" against. Record it as an assistant turn so the next real
         // reply has full context, same as any other reply the agent sends.
-        const updatedHistory = pushHistory((fresh.llm && fresh.llm.history) || [], 'model', message);
+        const updatedHistory = pushHistory((fresh.llm && fresh.llm.history) || [], 'assistant', message);
         const patch =
           stage === 'first'
-            ? { nudgeSentAt: Date.now(), llm: { history: updatedHistory } }
-            : { secondNudgeSentAt: Date.now(), llm: { history: updatedHistory } };
+            ? { nudgeSentAt: Date.now(), llm: { history: updatedHistory }, nudgeFailureCount: 0 }
+            : { secondNudgeSentAt: Date.now(), llm: { history: updatedHistory }, nudgeFailureCount: 0 };
         conversationMemory.updateSession(chatId, patch);
         chatLogger.logOutgoing({
           chatId,
@@ -143,7 +154,31 @@ async function scanAndSendNudges(sendMessageFn) {
         });
         logger.info(`Sent ${stage}-stage cart-recovery nudge to ${chatId} (variant: ${variantId}).`);
       } catch (err) {
-        logger.error(`Failed to send ${stage}-stage cart-recovery nudge to ${chatId}.`, err);
+        // 2026-08-03 fix: a send that fails only because the WhatsApp client
+        // itself isn't connected right now (a brief reconnect window, not
+        // this specific contact being broken) used to count identically
+        // toward the 3-strike give-up limit — a couple of reconnects in a
+        // 45-min span could permanently disable a real customer's nudges for
+        // reasons that had nothing to do with them. This is the one error
+        // message sendMessageToChatId throws for that case (see
+        // whatsapp/client.js) — skip counting it as a failure at all and
+        // just retry next scan, same as the onReady gate already does for
+        // each scheduler's very first run.
+        if (err && err.message === 'WhatsApp client is not connected.') {
+          logger.warn(`Skipped ${stage}-stage cart-recovery nudge to ${chatId} — WhatsApp client isn't connected right now. Will retry next scan (not counted as a failure).`);
+          return;
+        }
+        const failureCount = (fresh.nudgeFailureCount || 0) + 1;
+        if (failureCount >= MAX_CONSECUTIVE_NUDGE_FAILURES) {
+          conversationMemory.updateSession(chatId, { nudgeFailureCount: failureCount, nudgeGaveUp: true });
+          logger.error(
+            `Failed to send ${stage}-stage cart-recovery nudge to ${chatId} (${failureCount} consecutive failures) — giving up on this chat's nudges.`,
+            err
+          );
+        } else {
+          conversationMemory.updateSession(chatId, { nudgeFailureCount: failureCount });
+          logger.error(`Failed to send ${stage}-stage cart-recovery nudge to ${chatId} (${failureCount}/${MAX_CONSECUTIVE_NUDGE_FAILURES}).`, err);
+        }
       }
     });
   }

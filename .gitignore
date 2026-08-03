@@ -8,6 +8,12 @@ chat_history.log.*
 npm-debug.log*
 .DS_Store
 sessions_state.json
+agent_stats_state.json
+bot_control_state.json
+evaluated_chats.json
+delivery_followup_state.json
+src/bot/corrections_pending.json
+src/bot/corrections.json.backup-*
 training-data/conversations.jsonl
 training/venv/
 training/local_model/

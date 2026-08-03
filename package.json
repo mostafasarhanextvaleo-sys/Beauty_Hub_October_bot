@@ -12,11 +12,13 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
-    "whatsapp-web.js": "^1.26.0",
-    "qrcode-terminal": "^0.12.0",
     "dotenv": "^16.4.5",
-    "googleapis": "^140.0.1",
     "express": "^4.19.2",
-    "node-fetch": "^2.7.0"
+    "googleapis": "^140.0.1",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^9.0.3",
+    "puppeteer": "^24.38.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0"
   }
 }

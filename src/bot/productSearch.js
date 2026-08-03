@@ -21,12 +21,21 @@ function scoreProduct(tokens, product) {
   const name = normalizeArabic(product.name || '');
   const description = normalizeArabic(product.description || '');
   const benefits = normalizeArabic((product.benefits || []).join(' '));
+  // 2026-07-18 audit: this fallback never looked at targetType (Skin/Hair
+  // Type) at all — semantic search does (via productEmbeddingText below), so
+  // the gap was invisible under normal operation but meant the keyword
+  // fallback was measurably weaker exactly when it's needed most (an OpenAI
+  // outage, SEMANTIC_SEARCH_ENABLED=false, or the first 5 min before
+  // embeddings warm up). Weighted like description/benefits (+1) — it's tag
+  // text, not the primary identifying name.
+  const targetType = normalizeArabic(Array.isArray(product.targetType) ? product.targetType.join(' ') : '');
 
   let score = 0;
   tokens.forEach((token) => {
     if (name.includes(token)) score += 3;
     if (description.includes(token)) score += 1;
     if (benefits.includes(token)) score += 1;
+    if (targetType.includes(token)) score += 1;
   });
   return score;
 }

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const { runExclusive } = require('../utils/chatLock');
 
 const STAGES = {
   NEW: 'NEW',
@@ -104,15 +105,34 @@ function evictStaleSessions() {
 // to a temp file first and renaming is atomic on the same filesystem (POSIX
 // guarantee), so the live STATE_PATH is either the last fully-written good
 // version or the new one — never a half-written one.
-function persistSessionsNow() {
+//
+// 2026-07-18 audit (part 2): the sync writeFileSync/renameSync above blocked
+// the entire event loop while it ran — measured 7ms at a simulated 50x/1200-
+// session load, freezing every concurrent customer's in-flight request for
+// that window on every persist. Switched to fs.promises so it no longer
+// blocks. That reintroduces a race the synchronous version got "for free"
+// from Node's single-threaded blocking I/O: two overlapping async persists
+// could both write the same tmpPath concurrently. persistSessionsNow is
+// therefore never called directly — only via runPersistExclusive below,
+// which reuses chatLock.js's runExclusive (same proven per-key serialization
+// already used for per-chat message handling) with a fixed key, so a second
+// persist request always waits for the current one to finish rather than
+// racing it.
+async function persistSessionsNow() {
   evictStaleSessions();
   const tmpPath = `${STATE_PATH}.tmp`;
   try {
-    fs.writeFileSync(tmpPath, JSON.stringify([...sessions.entries()]));
-    fs.renameSync(tmpPath, STATE_PATH);
+    await fs.promises.writeFile(tmpPath, JSON.stringify([...sessions.entries()]));
+    await fs.promises.rename(tmpPath, STATE_PATH);
   } catch (err) {
     logger.error('Failed to persist conversation sessions to disk.', err);
   }
+}
+
+const PERSIST_LOCK_KEY = '__sessions_state_persist__';
+
+function runPersistExclusive() {
+  return runExclusive(PERSIST_LOCK_KEY, persistSessionsNow);
 }
 
 // Collapses multiple updateSession() calls within the same message-handling
@@ -122,7 +142,7 @@ function schedulePersist() {
   persistScheduled = true;
   setImmediate(() => {
     persistScheduled = false;
-    persistSessionsNow();
+    runPersistExclusive().catch(() => {});
   });
 }
 

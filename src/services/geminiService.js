@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { resilientFetch } = require('../utils/resilientFetch');
 
 const REQUEST_TIMEOUT_MS = 15 * 1000;
 
@@ -30,12 +31,17 @@ function toGeminiSchema(schema) {
   return converted;
 }
 
-function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms: ${label}`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+// llmAgent.js stores session.llm.history (and passes `contents`) in the
+// canonical OpenAI chat shape ({role: 'user'|'assistant', content: string}) —
+// openaiService.js/localService.js consume that directly. Gemini's REST API
+// is the one dialect that actually differs (role 'model' instead of
+// 'assistant', text nested under parts[]), so it converts here instead of
+// making every other tier carry a translation layer for Gemini's sake.
+function toGeminiContents(contents) {
+  return contents.map((turn) => ({
+    role: turn.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: turn.content }],
+  }));
 }
 
 // Single structured-output call: the model MUST return a schema-conformant
@@ -52,7 +58,7 @@ async function generateStructuredReply({ systemInstruction, contents, responseSc
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`;
   const body = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
-    contents,
+    contents: toGeminiContents(contents),
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: toGeminiSchema(responseSchema),
@@ -61,17 +67,19 @@ async function generateStructuredReply({ systemInstruction, contents, responseSc
   };
 
   try {
-    const response = await withTimeout(
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': config.geminiApiKey,
-        },
-        body: JSON.stringify(body),
-      }),
-      REQUEST_TIMEOUT_MS,
-      'Gemini generateContent'
+    const response = await resilientFetch(
+      'gemini',
+      config.geminiConcurrency,
+      () =>
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': config.geminiApiKey,
+          },
+          body: JSON.stringify(body),
+        }),
+      { timeoutMs: REQUEST_TIMEOUT_MS, label: 'Gemini generateContent' }
     );
 
     if (!response.ok) {

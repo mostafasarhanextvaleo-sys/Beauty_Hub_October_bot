@@ -1,4 +1,7 @@
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const logger = require('./utils/logger');
 require('dotenv').config();
 
 const config = {
@@ -14,6 +17,20 @@ const config = {
   // the "all tiers failed" admin alert. Mirrors localTimeoutMs's existing
   // pattern below.
   openaiTimeoutMs: parseInt(process.env.OPENAI_TIMEOUT_MS, 10) || 20000,
+  // 2026-07-28 audit: caps for concurrencyLimiter.js, chosen from this
+  // account's actual OpenAI rate-limit headers (checked live: 10,000 RPM /
+  // 200,000 TPM for chat, 3,000 RPM for embeddings) — request-count headroom
+  // is generous, so these aren't an attempt to max out the account. They
+  // exist to smooth a burst of concurrent WhatsApp messages so they don't all
+  // hit OpenAI/Gemini/Sheets in the same instant, which is what actually
+  // caused the cascading failures seen in production (see that file's
+  // comment for the incident). Gemini and Sheets are capped lower — Gemini
+  // has shown real capacity-based outages independent of anything tunable
+  // here, and Sheets' quota is tighter than either OpenAI budget.
+  openaiChatConcurrency: parseInt(process.env.OPENAI_CHAT_CONCURRENCY, 10) || 8,
+  openaiEmbeddingsConcurrency: parseInt(process.env.OPENAI_EMBEDDINGS_CONCURRENCY, 10) || 8,
+  geminiConcurrency: parseInt(process.env.GEMINI_CONCURRENCY, 10) || 4,
+  sheetsConcurrency: parseInt(process.env.SHEETS_CONCURRENCY, 10) || 4,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   sessionPath: process.env.SESSION_PATH || './.wwebjs_auth',
   storeName: 'Beauty Hub October',
@@ -29,6 +46,20 @@ const config = {
   // so without this it's an open DoS/quota-exhaustion surface on anyone who
   // can reach the health-server port.
   reloadToken: (process.env.RELOAD_TOKEN || '').trim(),
+  // 2026-07-30: invoices are generated on-the-fly by GET /invoice/:rowNumber
+  // (src/index.js) and printed straight from the browser (Ctrl+P) — no PDF
+  // storage, no Google Drive/OAuth. publicBaseUrl is the address that link
+  // must use to work from a phone/laptop that isn't the server itself;
+  // 'http://localhost:PORT' only resolves on the machine running the bot.
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, ''),
+  invoiceViewToken: (process.env.INVOICE_VIEW_TOKEN || '').trim(),
+  // 2026-08-02: required header (X-Admin-Send-Token) on POST /admin/send-message
+  // (src/index.js) — lets a single targeted WhatsApp message be triggered
+  // through the already-running, already-authenticated bot process (e.g. a
+  // manual follow-up to one customer) without ever spinning up a second
+  // whatsapp-web.js client against the same session, which risks
+  // corrupting/logging out the live one. Auto-generated like invoiceViewToken.
+  adminSendToken: (process.env.ADMIN_SEND_TOKEN || '').trim(),
   // 'rules' = existing STAGES state machine (default, proven on live traffic).
   // 'llm' = free-form Gemini-driven agent (src/bot/llmAgent.js). Switching back
   // to 'rules' is an instant rollback if the LLM agent misbehaves on real traffic.
@@ -80,5 +111,38 @@ const config = {
 config.credentialsAbsolutePath = path.isAbsolute(config.googleApplicationCredentials)
   ? config.googleApplicationCredentials
   : path.join(process.cwd(), config.googleApplicationCredentials);
+
+// GET /invoice/:rowNumber exposes a customer's name/phone/address keyed by a
+// small, guessable sequential row number — this token (required as a query
+// param) is what stops anyone who can reach the port from just scanning
+// /invoice/1, /invoice/2, ... for every order ever placed. Auto-generated
+// once and appended to .env (rather than requiring manual setup) so it's
+// zero-effort *and* stable across restarts — a token that regenerated on
+// every restart would silently break every "Print Invoice" link already
+// sitting in old Confirmed_Orders rows.
+if (!config.invoiceViewToken) {
+  config.invoiceViewToken = crypto.randomBytes(24).toString('hex');
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+    fs.appendFileSync(envPath, `\nINVOICE_VIEW_TOKEN=${config.invoiceViewToken}\n`);
+    logger.info('Generated INVOICE_VIEW_TOKEN and saved it to .env (first run).');
+  } catch (err) {
+    logger.error(
+      'Generated an INVOICE_VIEW_TOKEN but could not persist it to .env — it will regenerate (and invalidate every existing "Print Invoice" link) on the next restart until this is fixed.',
+      err
+    );
+  }
+}
+
+if (!config.adminSendToken) {
+  config.adminSendToken = crypto.randomBytes(24).toString('hex');
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+    fs.appendFileSync(envPath, `\nADMIN_SEND_TOKEN=${config.adminSendToken}\n`);
+    logger.info('Generated ADMIN_SEND_TOKEN and saved it to .env (first run).');
+  } catch (err) {
+    logger.error('Generated an ADMIN_SEND_TOKEN but could not persist it to .env — it will regenerate on the next restart until this is fixed.', err);
+  }
+}
 
 module.exports = config;

@@ -64,21 +64,30 @@ async function checkForDeliveredOrders(sendMessageFn, resolvePhoneToChatIdFn) {
     if (orderStatus === 'Delivered' && !prev.followupSent) {
       const chatId = phoneToChatId.get(phone);
       if (!chatId) {
-        logger.warn(`Order for ${phone} is marked "Delivered" but no matching WhatsApp chat was found — cannot send the follow-up.`);
+        logger.warn(`Order for ${phone} is marked "Delivered" but no matching WhatsApp chat was found — cannot send the follow-up. Will retry next scan.`);
       } else if (conversationMemory.isHumanHandoffCooldownActive(conversationMemory.getSession(chatId))) {
-        logger.info(`Skipping delivery follow-up for ${phone} — customer is in the 24h human handoff cooldown.`);
+        logger.info(`Skipping delivery follow-up for ${phone} — customer is in the 24h human handoff cooldown. Will retry next scan.`);
       } else {
         try {
           if (sentCount > 0) await sleep(SEND_DELAY_MS);
           await sendMessageFn(chatId, DELIVERED_FOLLOWUP_MESSAGE);
-          conversationMemory.updateSession(chatId, { awaitingDeliveryFeedback: true });
+          conversationMemory.updateSession(chatId, { awaitingDeliveryFeedback: true, deliveryFeedbackRequestedAt: Date.now() });
           logger.success(`Delivery follow-up sent to ${phone}.`);
           sentCount += 1;
+          // 2026-08-03 fix: this used to be set unconditionally after the
+          // whole if/else-if/else block regardless of whether a message was
+          // actually sent — a send that failed only because WhatsApp wasn't
+          // ready yet (or a chatId that couldn't be resolved, or a cooldown
+          // that was active at that exact moment) got silently and
+          // permanently marked "handled" with nothing ever sent, since this
+          // only resets when the Sheet's status moves off "Delivered". Now
+          // only a confirmed successful send marks it done; every other
+          // branch leaves followupSent alone so the next 5-min scan retries.
+          prev.followupSent = true;
         } catch (err) {
-          logger.error(`Failed to send delivery follow-up to ${phone}.`, err);
+          logger.error(`Failed to send delivery follow-up to ${phone}. Will retry next scan.`, err);
         }
       }
-      prev.followupSent = true;
     } else if (orderStatus !== 'Delivered') {
       prev.followupSent = false;
     }
@@ -89,11 +98,29 @@ async function checkForDeliveredOrders(sendMessageFn, resolvePhoneToChatIdFn) {
   if (sentCount > 0) saveState();
 }
 
+// 2026-07-30 incident: resolvePhoneToChatIdFn (buildPhoneToChatIdMap)
+// serially re-resolves every stored session via a puppeteer call with no
+// per-call cap — when the underlying client got wedged, one scan took
+// longer than CHECK_INTERVAL_MS, so the next tick started a second scan on
+// top of the still-running first one, and they piled up indefinitely,
+// continuously hammering the already-stuck client. This guard makes scans
+// mutually exclusive regardless of how long one takes (client.js's
+// resolveRealPhone also now has its own per-call timeout, so a single stuck
+// contact no longer stalls the whole scan either — belt and suspenders).
+let scanInProgress = false;
+
 function startDeliveryFollowupScheduler(sendMessageFn, resolvePhoneToChatIdFn, intervalMs = CHECK_INTERVAL_MS) {
   const timer = setInterval(() => {
-    checkForDeliveredOrders(sendMessageFn, resolvePhoneToChatIdFn).catch((err) =>
-      logger.error('Delivery follow-up check crashed.', err)
-    );
+    if (scanInProgress) {
+      logger.warn('Delivery follow-up scan still running from a previous tick — skipping this tick rather than overlapping.');
+      return;
+    }
+    scanInProgress = true;
+    checkForDeliveredOrders(sendMessageFn, resolvePhoneToChatIdFn)
+      .catch((err) => logger.error('Delivery follow-up check crashed.', err))
+      .finally(() => {
+        scanInProgress = false;
+      });
   }, intervalMs);
   if (timer.unref) timer.unref();
   logger.info(`Delivery follow-up scheduler started (checking every ${intervalMs / 60000} min for rows manually marked "Delivered").`);
