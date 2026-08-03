@@ -175,6 +175,22 @@ function buildWebsiteOrderSection(websiteOrder) {
 لو سألت عن حالة الطلب ده أو تفاصيله، طمنيها إنه وصلنا وجاري تجهيزه، وإن فريقنا هيتواصل معاها لو محتاجين أي تأكيد زيادة قبل الشحن. لو طلبت تضيف منتج جديد أو تبدأ طلب منفصل تاني، كمّلي معاها عادي زي أي استشارة جديدة.`;
 }
 
+// Injected once, only for the single turn right after llmAgent.js detects a
+// recognized Meta ad click-through (see adLeadDetector.js) — session.
+// adLandingPending is a one-shot flag cleared immediately after this turn's
+// reply, so a later ordinary message in the same conversation never repeats
+// this "you just clicked our ad" framing. Deliberately doesn't restate the
+// product's own description/price here — that's already in the candidates
+// list below (single source of truth, never duplicated/risking drift) —
+// this only instructs Sara to proactively lead with it instead of waiting
+// to be asked.
+function buildAdLandingSection(adLanding) {
+  if (!adLanding || !adLanding.product) return '';
+  return `
+
+العميلة دي جالك دلوقتي من إعلان فيسبوك عن منتج معين — ده أول رد ليها في المحادثة دي. ابدأي بترحيب دافئ، وأكدي عليها إنك فاهمة إنها مهتمة بالمنتج ده تحديدًا (${adLanding.product.name})، واذكري أهم مميزاته وسعره الحقيقي من قائمة المنتجات المتاحة تحت، من غير ما تستنيها تسأل. لو عندها أي استفسار إضافي (نوع بشرتها، الاستخدام اليومي، إلخ) جاوبيها منه كمان لو موجود في الوصف. بعد كده وجّهيها بشكل طبيعي وسلس لإتمام الحجز لو حابة.`;
+}
+
 function formatPrice(product) {
   return product.price ? String(product.price) : 'غير محدد بعد';
 }
@@ -236,7 +252,8 @@ function buildSystemPrompt(
   awaitingDeliveryFeedback,
   websiteOrder,
   activeOffers,
-  repeatedMessageNote
+  repeatedMessageNote,
+  adLanding
 ) {
   const bundleSection = bundleComplement
     ? `
@@ -270,6 +287,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
   const deliveryFeedbackSection = awaitingDeliveryFeedback ? `\n\n${AWAITING_DELIVERY_FEEDBACK_NOTE}` : '';
   const websiteOrderSection = buildWebsiteOrderSection(websiteOrder);
   const repeatedMessageSection = repeatedMessageNote ? `\n\n${REPEATED_MESSAGE_NOTE}` : '';
+  const adLandingSection = buildAdLandingSection(adLanding);
 
   // Prompt-caching layout (2026-07-27): everything up through correctionsSection
   // is byte-identical across every call — same customer or not, same turn or
@@ -289,7 +307,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
 
 ${SHIPPING_POLICY}
 
-${RETURN_POLICY}${correctionsSection}${offersSection}${freeShippingSection}${customerProfileSection}${deliveryFeedbackSection}${websiteOrderSection}${repeatedMessageSection}
+${RETURN_POLICY}${correctionsSection}${offersSection}${freeShippingSection}${customerProfileSection}${deliveryFeedbackSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}
 
 منتجات مطابقة لرسالة العميل الحالية — استخدمي فقط من هذه القائمة، وممنوع نهائياً اختراع منتج أو سعر مش موجود هنا:
 ${serializeCandidates(candidates)}${bundleSection}

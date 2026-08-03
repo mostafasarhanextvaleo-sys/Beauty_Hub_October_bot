@@ -5,7 +5,9 @@ const { buildEscalationResponse, baseLogFields, resolveEarlyStageOrderStatus } =
 const deliveryFeedbackDetector = require('./deliveryFeedbackDetector');
 const orderStatusDetector = require('./orderStatusDetector');
 const websiteOrderDetector = require('./websiteOrderDetector');
+const adLeadDetector = require('./adLeadDetector');
 const productSearch = require('./productSearch');
+const productMatcher = require('./productMatcher');
 const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
 const openaiService = require('../services/openaiService');
@@ -689,6 +691,30 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     updateSession(chatId, { nudgeSentAt: null });
   }
 
+  // 2026-08-04 addition — Meta "Click-to-WhatsApp" ad landing. Deterministic,
+  // free, no API call, same reasoning as every other detector here: whether
+  // this conversation starts already grounded in a specific real product
+  // must never depend on the LLM happening to notice the ad text itself.
+  // Only checked once per session (session.adLandingCampaignId guards it) —
+  // a returning customer chatting about something else later must never have
+  // their in-progress conversation reset back to the ad's product just
+  // because campaignWorker.tagAdLead's own independent detection call
+  // matched the same stored text again. adLandingPending drives one proactive
+  // greeting turn in the system prompt (see buildSystemPrompt's adLanding
+  // param) and is cleared right after that reply is generated below.
+  if (!session.adLandingCampaignId) {
+    const adCampaign = adLeadDetector.detectAdCampaign(trimmedText);
+    if (adCampaign) {
+      const adProduct = adCampaign.productId ? productMatcher.getById(adCampaign.productId) : null;
+      updateSession(chatId, {
+        adLandingCampaignId: adCampaign.id,
+        adLandingPending: true,
+        recommendedProduct: adProduct || session.recommendedProduct,
+        category: adProduct ? adProduct.category : session.category,
+      });
+    }
+  }
+
   // Deterministic, free, no API call — an explicit ask for a human must never
   // depend on the LLM correctly reading it as a handover every time.
   if (escalationDetector.isEscalationRequest(trimmedText)) {
@@ -833,6 +859,13 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const websiteOrderForPrompt = session.websiteOrder
     ? { ...session.websiteOrder, itemsSummary: websiteOrderDetector.summarizeItems(session.websiteOrder.items) }
     : null;
+  // Only rendered for the one turn right after ad-landing detection (see the
+  // top of this function) — session.adLandingPending is cleared right after
+  // this reply is generated, below, so a later ordinary message in the same
+  // conversation doesn't keep re-greeting the customer as if they just
+  // clicked the ad every single turn.
+  const adLandingForPrompt =
+    session.adLandingPending && session.recommendedProduct ? { product: session.recommendedProduct } : null;
   const systemInstruction = buildSystemPrompt(
     candidates,
     validBundleComplement,
@@ -845,7 +878,8 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // row (the hard MAX_CONSECUTIVE_REPEATS handover above only fires on the
     // 3rd), so the model gets one chance to break the loop itself before the
     // deterministic escalation takes over.
-    consecutiveRepeats === 1
+    consecutiveRepeats === 1,
+    adLandingForPrompt
   );
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', content: trimmedText }];
@@ -968,6 +1002,11 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // (0 if this turn's message didn't repeat the last one) so next turn's
     // comparison has the right running count — see MAX_CONSECUTIVE_REPEATS.
     consecutiveRepeats,
+    // One-shot: this reply is the proactive ad-landing greeting (if any was
+    // pending), so it must not fire again on the customer's next ordinary
+    // message. adLandingCampaignId itself is left alone — it's just a
+    // "already handled this session" marker, not something later turns read.
+    adLandingPending: false,
   });
 
   const { logEntry, adminNotification, orderHistoryEntry } = buildLogEntryAndNotification(

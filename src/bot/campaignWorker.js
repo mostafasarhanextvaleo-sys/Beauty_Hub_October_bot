@@ -5,6 +5,7 @@ const invoiceService = require('./invoiceService');
 const { getSession, updateSession } = require('./conversationMemory');
 const productMatcher = require('./productMatcher');
 const { runExclusive } = require('../utils/chatLock');
+const adLeadDetector = require('./adLeadDetector');
 
 const SEND_INTERVAL_MS = 6 * 60 * 1000; // per-message spacing once CAMPAIGN_STATUS=PUSH
 const TEST_TRIGGER_POLL_MS = 20 * 1000; // separate, fast poll — a single self-send has no ban-risk to pace
@@ -614,6 +615,59 @@ async function captureInboundLead(chatId, { phone, senderName, text } = {}) {
   }
 }
 
+// 2026-08-04 addition — called fire-and-forget from whatsapp/client.js for
+// every inbound message, alongside captureInboundLead. Cheap on every call
+// that isn't a match (adLeadDetector.detectAdCampaign is a plain substring
+// check, no API cost) — tags a contact with a specific ad campaign's Lead
+// Source/interested-category the moment their very first message is a
+// recognized ad click-through, so campaign performance and future targeted
+// outreach can be attributed accurately. Deliberately conservative about an
+// existing row, same reasoning as captureInboundLead: never resets a lead
+// that's already progressed past PENDING/ON_HOLD (an OFFER_SENT/REPLIED/
+// ORDERED/DECLINED/NEEDS_HUMAN_REVIEW contact keeps whatever got them
+// there) — but a fresh ad click's Lead Source/category is still worth
+// recording even on an existing PENDING/ON_HOLD row, since nothing about
+// their targeting has been decided yet.
+async function tagAdLead(chatId, { phone, senderName, text } = {}) {
+  const campaign = adLeadDetector.detectAdCampaign(text);
+  if (!campaign) return;
+
+  try {
+    await runExclusive(chatId, async () => {
+      const rows = await googleSheets.getTargetedClientsRows();
+      const existing = rows.find((r) => r.chatId === chatId);
+      const product = campaign.productId ? productMatcher.getById(campaign.productId) : null;
+      // Falls back to the campaign's own label if the linked product id ever
+      // stops resolving (e.g. removed from the catalog) — never blocks the
+      // tagging on catalog lookup succeeding.
+      const category = product ? product.name : campaign.leadSource;
+
+      if (!existing) {
+        await googleSheets.upsertTargetedClient(chatId, {
+          phoneNumber: phone || '',
+          customerName: senderName || '',
+          category,
+          campaignStatus: 'PENDING',
+          leadSource: campaign.leadSource,
+        });
+        logger.success(`Ad-lead "${campaign.id}" tagged ${chatId} into Targeted_Clients as PENDING (${campaign.leadSource}).`);
+        return;
+      }
+
+      if (existing.campaignStatus === 'PENDING' || existing.campaignStatus === 'ON_HOLD') {
+        await googleSheets.upsertTargetedClient(chatId, { category, leadSource: campaign.leadSource });
+        logger.info(`Ad-lead "${campaign.id}" updated Lead Source/category for existing contact ${chatId} (status unchanged: ${existing.campaignStatus}).`);
+      } else {
+        logger.info(
+          `Ad-lead "${campaign.id}" detected for ${chatId}, but their Targeted_Clients status (${existing.campaignStatus}) is already past PENDING — leaving it untouched.`
+        );
+      }
+    });
+  } catch (err) {
+    logger.error(`Ad-lead tagging failed for ${chatId} (their message was still processed normally).`, err);
+  }
+}
+
 // Called from whatsapp/client.js right after a real order gets logged to
 // Order History — additive only, never affects the real order flow.
 async function handleOrderConfirmed(chatId, { customerName, phone, address, products, totalPrice }) {
@@ -664,6 +718,7 @@ module.exports = {
   startCampaignWorker,
   handleInboundMessage,
   captureInboundLead,
+  tagAdLead,
   handleOrderConfirmed,
   // Exported mainly for isolated testing (see scripts/) — startCampaignWorker
   // is what actually drives these on their real timers in production.

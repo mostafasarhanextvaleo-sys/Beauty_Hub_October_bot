@@ -547,6 +547,14 @@ function createClient() {
         // bot is paused or in human-handoff cooldown for them right now.
         campaignWorker.captureInboundLead(message.from, { phone, senderName, text: logText });
 
+        // 2026-08-04 addition — same fire-and-forget reasoning as above.
+        // Runs after captureInboundLead so a brand-new ad-click contact is
+        // already inserted generically first, then immediately re-tagged
+        // with the ad's specific Lead Source/category on top (see
+        // campaignWorker.tagAdLead / adLeadDetector.js). Cheap no-op for
+        // every message that isn't a recognized ad click-through.
+        campaignWorker.tagAdLead(message.from, { phone, senderName, text: logText });
+
         // Human handoff cooldown (2026-07-16 spec): once this specific
         // customer has been handed to a human agent, the bot goes
         // completely silent for them for 24 hours — no LLM call, no reply,
