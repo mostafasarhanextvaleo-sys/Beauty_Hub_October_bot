@@ -551,8 +551,56 @@ async function ensureCrmTabs() {
 // etc.) — migrating must not silently drop whatever was running, so that
 // campaign is carried over verbatim into Offer 1 rather than reset to blank/
 // PAUSE like the other 4 new slots.
+// 2026-08-04 fix: this used to only run inline inside the one-time
+// old-panel-to-new-table migration below — once that migration had happened
+// once (which it already had, live), this never ran again on any later
+// restart. Meanwhile the tab's grid kept getting manually shrunk back down
+// in the Sheet UI (confirmed twice now: 2026-08-02 and again as of
+// 2026-08-04), silently breaking the heartbeat write every single tick with
+// no self-healing. Also fixes a stale assumption in the old inline version:
+// the heartbeat lives in column I (OFFERS_CAMPAIGN_HEARTBEAT_CELL), not H,
+// so it needs at least 9 columns, not 8 — confirmed live 2026-08-04 that an
+// 8-column grid still isn't wide enough. Called unconditionally on every
+// ensureOffersCampaignSeeded() run (i.e. every startup) so a manual shrink
+// is corrected on the next restart instead of needing another one-off fix.
+async function ensureOffersCampaignGridWide(sheetMeta) {
+  if (!sheetMeta) return;
+  const gridProps = sheetMeta.properties.gridProperties || {};
+  const requiredColumns = 9; // A..G table + column I heartbeat (H left as a spacer)
+  const requiredRows = OFFERS_CAMPAIGN_OFFER_COUNT + 1;
+  if ((gridProps.columnCount || 0) >= requiredColumns && (gridProps.rowCount || 0) >= requiredRows) return;
+
+  await sheetsClient.spreadsheets.batchUpdate(
+    {
+      spreadsheetId: config.googleSheetId,
+      requestBody: {
+        requests: [
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId: sheetMeta.properties.sheetId,
+                gridProperties: {
+                  columnCount: Math.max(gridProps.columnCount || 0, requiredColumns),
+                  rowCount: Math.max(gridProps.rowCount || 0, requiredRows),
+                },
+              },
+              fields: 'gridProperties.columnCount,gridProperties.rowCount',
+            },
+          },
+        ],
+      },
+    },
+    { timeout: REQUEST_TIMEOUT_MS }
+  );
+  logger.info(`Widened "${OFFERS_CAMPAIGN_SHEET_NAME}" grid to at least ${requiredColumns} columns / ${requiredRows} rows (heartbeat cell needs column I).`);
+}
+
 async function ensureOffersCampaignSeeded() {
   if (!enabled) return;
+  const meta = await sheetsClient.spreadsheets.get({ spreadsheetId: config.googleSheetId }, { timeout: REQUEST_TIMEOUT_MS });
+  const sheetMeta = (meta.data.sheets || []).find((s) => s.properties.title === OFFERS_CAMPAIGN_SHEET_NAME);
+  await ensureOffersCampaignGridWide(sheetMeta);
+
   const result = await sheetsClient.spreadsheets.values.get(
     { spreadsheetId: config.googleSheetId, range: `${OFFERS_CAMPAIGN_SHEET_NAME}!A1:G5` },
     { timeout: REQUEST_TIMEOUT_MS }
@@ -591,40 +639,9 @@ async function ensureOffersCampaignSeeded() {
   const migratedLastTestSentAt = isOldPanel ? cell(3, 1) : '';
   const migratedLastTickAt = isOldPanel ? cell(4, 1) : '';
 
-  // The old panel layout only ever needed A1:C5, and this tab's grid was at
-  // some point manually trimmed down to match (confirmed 2026-08-02: every
-  // other CRM tab has hundreds of rows / 24+ columns, this one had exactly
-  // 6x6) — too narrow for the new table's heartbeat cell in column H.
-  // Widening a grid is always safe (never drops existing cell data), so this
-  // just guarantees enough room before writing to it below.
-  const meta = await sheetsClient.spreadsheets.get({ spreadsheetId: config.googleSheetId }, { timeout: REQUEST_TIMEOUT_MS });
-  const sheetMeta = (meta.data.sheets || []).find((s) => s.properties.title === OFFERS_CAMPAIGN_SHEET_NAME);
-  const gridProps = (sheetMeta && sheetMeta.properties.gridProperties) || {};
-  if (sheetMeta && ((gridProps.columnCount || 0) < 8 || (gridProps.rowCount || 0) < OFFERS_CAMPAIGN_OFFER_COUNT + 1)) {
-    await sheetsClient.spreadsheets.batchUpdate(
-      {
-        spreadsheetId: config.googleSheetId,
-        requestBody: {
-          requests: [
-            {
-              updateSheetProperties: {
-                properties: {
-                  sheetId: sheetMeta.properties.sheetId,
-                  gridProperties: {
-                    columnCount: Math.max(gridProps.columnCount || 0, 8),
-                    rowCount: Math.max(gridProps.rowCount || 0, OFFERS_CAMPAIGN_OFFER_COUNT + 1),
-                  },
-                },
-                fields: 'gridProperties.columnCount,gridProperties.rowCount',
-              },
-            },
-          ],
-        },
-      },
-      { timeout: REQUEST_TIMEOUT_MS }
-    );
-  }
-
+  // Grid-widen already happened unconditionally above (ensureOffersCampaignGridWide) —
+  // this migration branch only needs the sheet metadata for the data-writing
+  // requests below, not another widen pass.
   const tableRows = [OFFERS_CAMPAIGN_HEADERS];
   for (let i = 1; i <= OFFERS_CAMPAIGN_OFFER_COUNT; i += 1) {
     if (i === 1) {
