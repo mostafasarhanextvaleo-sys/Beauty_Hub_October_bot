@@ -24,6 +24,10 @@ const FOOT_PRODUCT = { id: 'B1', name: 'مبرد قدم تجريبي', price: '1
     async getTargetedClientsRows() { return targetedClients.map((r) => ({ ...r })); },
     async upsertTargetedClient(chatId, fields) { Object.assign(targetedClients.find((r) => r.chatId === chatId), fields); },
     async setLastCampaignTickAt() {},
+    // Used by llmAgent.js's buildCustomerProfile — inherited by test group 2
+    // below too, since this stub is never cleared from require.cache between
+    // groups. Empty history is the correct "no prior orders" case.
+    getCustomerHistory() { return []; },
   };
   require.cache[googleSheetsPath] = { id: googleSheetsPath, filename: googleSheetsPath, loaded: true, exports: googleSheetsStub };
   const fakeSessions = new Map();
@@ -45,10 +49,18 @@ const FOOT_PRODUCT = { id: 'B1', name: 'مبرد قدم تجريبي', price: '1
     console.log('PASS: category matching correctly routed a hair-loss lead to the hair offer, skipping the mismatched foot offer');
   });
 })()
-  // --- Test group 2: repetition-loop hard escalation (llmAgent.js) ---
+  // --- Test group 2: repetition tracking, NOT a forced handover (llmAgent.js) ---
+  // 2026-08-04 update: this used to verify the 3rd identical message forced a
+  // deterministic handover. The 2026-08-04 zero-lock safeguard removed that
+  // hard escalation entirely (repeating yourself isn't hard evidence a human
+  // is needed) — see scripts/_tmp_test_zero_lock.js for the full safeguard
+  // coverage. Updated here to verify the counter still tracks correctly but
+  // no longer forces anything.
   .then(async () => {
     delete require.cache[conversationMemoryPath];
+    delete require.cache[productMatcherPath];
     delete require.cache[require.resolve('../src/bot/llmAgent')];
+    delete require.cache[require.resolve('../src/bot/productSearch')];
 
     const fakeSessions = new Map();
     const conversationMemoryStub = {
@@ -76,11 +88,11 @@ const FOOT_PRODUCT = { id: 'B1', name: 'مبرد قدم تجريبي', price: '1
     });
 
     const result = await llmAgent.handleMessage({ chatId, phone: '201000000000', text: 'تم', senderName: 'Test' });
-    assert.ok(result.reply.includes('فريقنا'), 'the 3rd identical message must short-circuit to a handover reply, never reaching the LLM');
+    assert.ok(!result.reply.includes('فريقنا'), 'the 3rd identical message must NOT be the old hard-escalation canned reply');
     const session = conversationMemoryStub.getSession(chatId);
-    assert.strictEqual(session.humanHandover, true, 'session must be flagged humanHandover after 3 identical messages');
-    assert.strictEqual(session.consecutiveRepeats, 0, 'counter must reset after escalating');
-    console.log('PASS: 3rd identical message deterministically escalates to human handover without an LLM call');
+    assert.strictEqual(session.humanHandover, false, 'the 3rd identical message must not force a handover (2026-08-04 zero-lock safeguard)');
+    assert.strictEqual(session.consecutiveRepeats, 2, 'the counter itself still tracks correctly (0 -> 1 -> 2), just never forces anything');
+    console.log('PASS: 3rd identical message no longer forces a handover; the LLM still handles the turn normally.');
   })
   .then(() => {
     console.log('\nALL PHASE 2 TESTS PASSED');

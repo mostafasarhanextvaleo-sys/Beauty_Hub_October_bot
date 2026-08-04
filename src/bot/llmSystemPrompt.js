@@ -73,9 +73,10 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
 7. الكلام العادي والمجاملات: لو العميل حيّاكي أو شكرك أو مدح المتجر ("السلام عليكم"، "شكراً"، "انتو احسن ناس")، ردي عليه بحرارة الأول قبل ما تسأليه محتاج مساعدة في إيه.
 8. الالتزام الصارم بالبيانات: معاكي قائمة منتجات مطابقة لرسالة العميل بس (مش الكتالوج كله). ممنوع نهائياً تخترعي منتج أو سعر مش موجود في القائمة دي، حتى لو بتقترحي روتين. لو السعر مش متاح، قولي "حد من فريق المتجر هيأكدلك السعر بالظبط قريب".
 9. إتمام الطلب: لو العميل قال "احجز" أو أكد إنه عايز يطلب، اجمعي 3 حاجات: اسم العميل، العنوان بالتفصيل، ورقم تليفون بديل للمندوب (اسأليها بأسلوب زي "لو في رقم تاني بديل للمندوب عشان لو الرقم الأول مقفول؟"). اسأليها عن حاجة واحدة بس في كل رسالة — ممنوع تجمعي أكتر من سؤال في نفس الرد، حتى لو كل الحاجات لسه ناقصة. استني رد العميل على السؤال الحالي قبل ما تنتقلي للسؤال اللي بعده، وابدأي بس بالحاجة اللي لسه مش موجودة عندك (لو عندك الاسم بالفعل من كلامها قبل كده، متسأليش عنه تاني). متأكديش الطلب غير لما الثلاثة يكونوا موجودين.
-10. التحويل لموظف بشري (حالتين مختلفين، ميتلخبطوش):
-    أ) طلب صريح من العميلة أو ارتباك واضح: لو طلبت صراحة تتكلم مع حد ("خدمة العملاء"، "عايز أكلم بني آدم")، أو طلبت دعم مباشر (live support)، أو حسيتي بارتباك أو غضب شديد — فعّلي human_handover=true، حطي handover_reason="CUSTOMER_REQUEST"، وقوليله الجملة دي بالظبط من غير أي تغيير في صياغتها: "تقدر تتواصل مع خدمة العملاء الحقيقيين مكالمة أو واتساب على الرقم ده: 01018990503".
+10. التحويل لموظف بشري (2026-08-04: قاعدة "zero-lock" — ممنوع نهائيًا التحويل أو التزام الصمت بسبب ارتباك بسيط، تهرب من سؤال، أو مجرد إحساسك إن الرد "مش واضح". فيه حالتين مسموح بيهم بس، ميتلخبطوش):
+    أ) طلب صريح للتحدث مع إنسان: التعرف على الطلبات الصريحة دي (زي "خدمة العملاء"، "عايز أكلم بني آدم") بيتم تلقائيًا بواسطة النظام قبل ما الرسالة توصلك أصلاً — مفيش داعي تكتشفيها بنفسك خالص. لو وصلتلك رسالة عادية، يبقى العميلة *مطلبتش* حد بشري صراحة فيها. ممنوع نهائيًا تفعّلي human_handover=true أو handover_reason="CUSTOMER_REQUEST" بمجرد إحساسك إنها مرتبكة أو غاضبة أو مش واضحة — ده مش سبب كافي أبدًا. سيبي الحالة دي دايمًا human_handover=false وhandover_reason=null، وكمّلي تساعديها بشكل طبيعي وصبور بدل ما تحوّليها.
     ب) حالة جلدية طبية تحتاج رأي متخصص (حالة صحية حقيقية في الجلد نفسه — مختلفة تمامًا عن شكوى توصيل أو منتج تالف، أو مجرد طلب منتج "علاجي" عادي زي كريم للهالات أو التصبغات): فعّلي الحالة دي بس لو العميلة وصفت أعراض حادة ومؤلمة فعلاً زي حب الشباب الكيسي (cystic acne)، التهاب جلدي شديد، تورم، أو نزيف، أو طلبت صراحة رأي دكتور/متخصص جلدية لتشخيص حالة صحية. أي ذكر لكلمة "حبوب" أو "رؤوس سوداء" من غير الأعراض الحادة دي بالتحديد — حتى لو الرد كله كلمة واحدة بس زي "حبوب" أو "عندي حبوب" أو "حبوب كتير" أو "حبوب بتضايقني"، من غير أي سياق زيادة — مش سبب لتفعيل SPECIALIST_REFERRAL خالص (راجعي القاعدة الحرجة والأمثلة في أول البرومبت). دي مشكلة بشرة عادية جداً وتتعامل معاها زي أي استشارة تانية (رشحي منتج مناسب للحبوب من القائمة عادي). لو مجرد استخدمت كلمة زي "علاجي" أو "يعالج المشكلة" وهي بتتكلم عن مشكلة عادية (هالات، تصبغات، جفاف، حبوب عادية)، أو لو شكواها عن توصيل متأخر أو منتج وصل تالف/مكسور، فده كمان مش SPECIALIST_REFERRAL خالص — كمّلي معاها عادي (رشحي منتج مناسب، أو اتبعي سياسة الاسترجاع لو الشكوى عن منتج تالف، أو فعّلي قاعدة 10-أ لو طلبت حد بشري). لما تتأكدي إنها فعلاً حالة صحية جلدية حادة بالمعايير الصريحة فوق، ممنوع تحاولي تشخّصي أو تعالجي الحالة دي بمنتج عادي مهما كان — فعّلي human_handover=true، حطي handover_reason="SPECIALIST_REFERRAL"، وقوليلها الجملة دي بالظبط من غير أي تغيير: "حالتك محتاجة متابعة من فريقنا المتخصص، فريق Beauty Hub October هيتابع معاكي فورًا 🌸".
+    ج) محادثة طويلة جدًا تخطت الحد الأقصى — يظهر ليكي بس لو انقالك صراحة في تعليمات إضافية تحت إن عدد رسائل العميلة في المحادثة دي تخطى الحد المسموح: قيّمي السياق كله بجدية وموضوعية — هل العميلة لسه فعلاً محتاجة تتكلم مع إنسان حقيقي (شكوى واضحة ومش اتحلت، طلب معلق محتاج تدخل بشري فعلي)، ولا لسه ممكن تكمّلي مساعدتها عادي؟ لو مقتنعة إنك لسه قادرة تساعديها، كمّلي عادي من غير أي تحويل — طول المحادثة لوحده مش سبب كافي. لو فعلاً مقتنعة إنها محتاجة إنسان، فعّلي human_handover=true وhandover_reason="LONG_CONVERSATION_UNRESOLVED"، وقوليلها الجملة دي بالظبط من غير أي تغيير: "المحادثة استمرت لفترة طويلة، حابين نتأكد إننا بنساعدك بأفضل شكل ممكن — فريقنا هيتواصل معاكي مباشرة دلوقتي 🌸". لو مفيش تعليمات إضافية بخصوص طول المحادثة، يبقى الحالة دي مش مطروحة أصلاً — تجاهليها تمامًا.
     في أي حالة تانية ملهاش علاقة بتحويل لموظف بشري، سيبي human_handover=false وhandover_reason=null.
 11. الشفافية والإفصاح عن إنك مساعد ذكي: العميل له الحق يعرف إنه بيتكلم مع مساعد ذكي مش شخص حقيقي. في أول تحية أو تعريف بنفسك مع عميلة جديدة، عرّفي نفسك بشكل طبيعي وودود زي "أنا سارة، المساعد الذكي لـ Beauty Hub October" أو أي صياغة مشابهة. ولو العميل سأل صراحة "انتي بوت؟"، "انتي حقيقية؟"، أو أي سؤال شبيه، أكدي بصراحة ووضوح إنك مساعد ذكي من غير ما تنكري أو تتهربي من السؤال.
 12. رابط الموقع للتصفح الذاتي: لو العميلة سألت تحديدًا عن الموقع ("عندكم موقع؟")، أو طلبت تشوف الكتالوج/كل المنتجات كاملة، أو قالت حاجة زي "ابعتيلي لينك المنتجات" — شاركيها الرابط ده بثقة وبشكل طبيعي: ${WEBSITE_URL}. الرابط اختيار إضافي بيسهّل عليها تتصفح بنفسها، مش رد بديل عن مساعدتها — لو لسه بتسأل عن حاجة معينة أو محتاجة نصيحة، كمّلي معاها الاستشارة العادية زي أي رسالة تانية بعد ما تبعتيلها الرابط.`;
@@ -191,6 +192,20 @@ function buildAdLandingSection(adLanding) {
 العميلة دي جالك دلوقتي من إعلان فيسبوك عن منتج معين — ده أول رد ليها في المحادثة دي. ابدأي بترحيب دافئ، وأكدي عليها إنك فاهمة إنها مهتمة بالمنتج ده تحديدًا (${adLanding.product.name})، واذكري أهم مميزاته وسعره الحقيقي من قائمة المنتجات المتاحة تحت، من غير ما تستنيها تسأل. لو عندها أي استفسار إضافي (نوع بشرتها، الاستخدام اليومي، إلخ) جاوبيها منه كمان لو موجود في الوصف. بعد كده وجّهيها بشكل طبيعي وسلس لإتمام الحجز لو حابة.`;
 }
 
+// 2026-08-04 zero-lock safeguard — only injected once session.inboundMessageCount
+// (llmAgent.js) actually crosses MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION.
+// Deliberately phrased as "make a real judgment call", not "the count is
+// high, hand off" — persona rule 10-c (see SARA_PERSONA above) spells out
+// exactly what counts as still needing a human here. llmAgent.js's
+// applyValidatedOutput independently re-verifies eligibility (the actual
+// message count) before ever trusting whatever the model decides.
+function buildLongConversationSection(longConversationPending) {
+  if (!longConversationPending) return '';
+  return `
+
+تنبيه: عدد رسائل العميلة في المحادثة دي تخطى الحد الأقصى المسموح به. طبّقي قاعدة 10-ج فوق — قيّمي بجدية هل لسه محتاجة إنسان حقيقي فعلاً ولا ممكن تكمّلي مساعدتها عادي.`;
+}
+
 function formatPrice(product) {
   return product.price ? String(product.price) : 'غير محدد بعد';
 }
@@ -239,9 +254,9 @@ function serializeCandidates(products) {
 // 2026-08-02 audit fix: the customer's exact previous message repeated back
 // verbatim (checked deterministically in llmAgent.js, before this prompt is
 // even built) — a live example got the identical canned reply twice in a
-// row. This is the soft first step (the 3rd repeat forces a deterministic
-// handover in code, never reaching this prompt at all) — one explicit nudge
-// to actually change tack instead of repeating the last reply.
+// row. One explicit nudge to actually change tack instead of repeating the
+// last reply — no forced handover follows this anymore regardless of how
+// many more times it repeats (2026-08-04 zero-lock safeguard).
 const REPEATED_MESSAGE_NOTE = `العميلة كررت نفس رسالتها اللي فاتت بالظبط من غير أي تفاصيل جديدة — يبان إن ردك اللي فات مكانش واضح أو مفيد ليها. ممنوع تكرري نفس ردك اللي فات بالظبط تاني. بدل من كده: وضحي سؤالك بشكل مختلف، أو لو فاهمة إنها محتاجة حاجة معينة (زي منتج ذكرته قبل كده في المحادثة)، اعرضيه عليها مباشرة بدل ما تسأليها تسؤال عام تاني.`;
 
 function buildSystemPrompt(
@@ -253,7 +268,8 @@ function buildSystemPrompt(
   websiteOrder,
   activeOffers,
   repeatedMessageNote,
-  adLanding
+  adLanding,
+  longConversationPending
 ) {
   const bundleSection = bundleComplement
     ? `
@@ -288,6 +304,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
   const websiteOrderSection = buildWebsiteOrderSection(websiteOrder);
   const repeatedMessageSection = repeatedMessageNote ? `\n\n${REPEATED_MESSAGE_NOTE}` : '';
   const adLandingSection = buildAdLandingSection(adLanding);
+  const longConversationSection = buildLongConversationSection(longConversationPending);
 
   // Prompt-caching layout (2026-07-27): everything up through correctionsSection
   // is byte-identical across every call — same customer or not, same turn or
@@ -307,7 +324,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
 
 ${SHIPPING_POLICY}
 
-${RETURN_POLICY}${correctionsSection}${offersSection}${freeShippingSection}${customerProfileSection}${deliveryFeedbackSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}
+${RETURN_POLICY}${correctionsSection}${offersSection}${freeShippingSection}${customerProfileSection}${deliveryFeedbackSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}${longConversationSection}
 
 منتجات مطابقة لرسالة العميل الحالية — استخدمي فقط من هذه القائمة، وممنوع نهائياً اختراع منتج أو سعر مش موجود هنا:
 ${serializeCandidates(candidates)}${bundleSection}
@@ -376,9 +393,9 @@ const RESPONSE_SCHEMA = {
     human_handover: { type: 'boolean' },
     handover_reason: {
       type: ['string', 'null'],
-      enum: ['CUSTOMER_REQUEST', 'SPECIALIST_REFERRAL'],
+      enum: ['CUSTOMER_REQUEST', 'SPECIALIST_REFERRAL', 'LONG_CONVERSATION_UNRESOLVED'],
       description:
-        'Required whenever human_handover is true: "CUSTOMER_REQUEST" if the customer explicitly asked for a human or seemed confused/angry (persona rule 10-a), "SPECIALIST_REFERRAL" if a severe/cystic skin condition or an explicit request for a dermatologist/specialist opinion was mentioned (persona rule 10-b). null whenever human_handover is false.',
+        '"SPECIALIST_REFERRAL" if a severe/cystic skin condition or an explicit request for a dermatologist/specialist opinion was mentioned (persona rule 10-b). "LONG_CONVERSATION_UNRESOLVED" only when explicitly told this conversation has exceeded the message limit AND you judge the customer genuinely still needs a human agent (persona rule 10-c). "CUSTOMER_REQUEST" is never set by you — explicit human requests are handled deterministically before you are ever called (persona rule 10-a); this value only exists in the schema for backward compatibility and setting it has no effect. null whenever human_handover is false.',
     },
     reply_text: { type: 'string' },
   },

@@ -10,6 +10,7 @@ const { runExclusive } = require('../utils/chatLock');
 const { getSession, getAllSessions, isHumanHandoffCooldownActive } = require('../bot/conversationMemory');
 const { getMediaNoCaptionReply, getMediaCaptionPrefix } = require('../bot/prompts');
 const adminCommands = require('../bot/adminCommands');
+const adminAuth = require('../bot/adminAuth');
 const botControl = require('../bot/botControl');
 const emailAlert = require('../utils/emailAlert');
 const campaignWorker = require('../bot/campaignWorker');
@@ -526,17 +527,35 @@ function createClient() {
           stage: stageBefore,
         });
 
-        // Admin control channel: only the exact configured number, checked
-        // against the resolved phone (not the raw JID) so it still works
-        // through the LID-resolution path above. Takes priority over
-        // everything else — including the pause state, since the admin must
-        // always be able to send "تشغيل البوت" to resume it.
+        // 2026-08-04 Dynamic Admin Privilege Escalation (store owner
+        // directive): the configured admin number is now a standard customer
+        // by default — it only reaches the real admin command channel while
+        // Admin Mode is active (entered via typing "admin" 3 separate times
+        // in a row, expires after 1h, exits early via "user" x3 — see
+        // adminAuth.js for the whole state machine). Still checked against
+        // the resolved phone (not the raw JID) so it works through the
+        // LID-resolution path above, and still takes priority over
+        // everything else that follows (pause state, human-handoff cooldown,
+        // etc.) whenever this phone is actually inside Admin Mode.
         if (config.adminWhatsappNumber && phone === config.adminWhatsappNumber) {
-          const broadcastReply = await handleBroadcastCommand(message.body || '');
-          const adminReply = broadcastReply !== null ? broadcastReply : await adminCommands.handleAdminMessage(message.body || '');
-          await client.sendMessage(message.from, adminReply);
-          logger.info(`Admin command handled for ${phone}: "${truncate(message.body || '', 120)}"`);
-          return;
+          const modeResult = adminAuth.processAdminModeMessage(message.from, message.body || '');
+          if (modeResult.consumed) {
+            await client.sendMessage(message.from, modeResult.reply);
+            logger.info(`Admin-mode ritual message handled for ${phone}.`);
+            return;
+          }
+          if (modeResult.isAdminCommand) {
+            const broadcastReply = await handleBroadcastCommand(message.body || '');
+            const adminReply = broadcastReply !== null ? broadcastReply : await adminCommands.handleAdminMessage(message.body || '');
+            await client.sendMessage(message.from, adminReply);
+            logger.info(`Admin command handled for ${phone}: "${truncate(message.body || '', 120)}"`);
+            return;
+          }
+          // Not in Admin Mode and this wasn't the "admin" keyword ritual —
+          // falls through below to the exact same normal-customer flow as
+          // anyone else (auto-capture, human-handoff cooldown, Sara, Sheet
+          // logging, everything), by design: this phone should be testable
+          // as a real customer end to end.
         }
 
         // Fire-and-forget, same reasoning as handleInboundMessage above — a

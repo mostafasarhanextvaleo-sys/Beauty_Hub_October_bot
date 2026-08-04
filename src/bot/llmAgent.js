@@ -65,20 +65,28 @@ function buildCustomerProfile(phone, previousUpdatedAt) {
   return { history, askFeedback };
 }
 
-// Hard backstop against infinite loops, independent of what the model says —
-// mirrors the legacy rule engine's MAX_UNCLEAR_CONFIRMATION_ATTEMPTS pattern.
-const MAX_NO_PROGRESS_TURNS = 3;
+// 2026-08-04 zero-lock safeguard (store owner directive): neither
+// session.noProgressTurns (order-collection stalling) nor
+// session.consecutiveRepeats (the customer repeating their exact previous
+// message) force a handover anymore — see where each is computed below for
+// what they still drive (a log note, and a one-time soft prompt nudge,
+// respectively). Vague stalling/repetition is not hard evidence a customer
+// needs a human; the only remaining message-volume-based escalation path is
+// MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION further down.
 
-// 2026-08-02 audit fix: MAX_NO_PROGRESS_TURNS above only ever counts turns
-// while order-collection is active (see applyValidatedOutput's
-// orderCollectionActive gate) — a customer repeating the exact same message
-// ("تم" twice, observed live) outside that window sailed straight past it
-// with no escalation at all, and the bot just repeated its own canned reply
-// back. This is a separate, independent counter for exactly that case: 2
-// consecutive identical messages (the 3rd occurrence) forces a handover,
-// same "3 strikes" severity as MAX_NO_PROGRESS_TURNS, checked deterministically
-// in handleMessage before any LLM call — see there for the short-circuit.
-const MAX_CONSECUTIVE_REPEATS = 2;
+// 2026-08-04 zero-lock/zero-handover safeguard (store owner directive): the
+// bot must never auto-silence itself or hand off on minor confusion,
+// deflections, or the backstops above — the ONLY auto-handover path left is
+// a single session exceeding this many real inbound customer messages, and
+// even then only after the LLM itself confirms (via the long-conversation
+// prompt section below) the customer genuinely still needs a human agent
+// right now, not just that the count crossed the line. Explicit human
+// requests and genuine clinical-severity referrals are unaffected by any of
+// this — those are handled by escalationDetector.js (deterministic, before
+// the LLM is ever called) and the independently-verified SPECIALIST_REFERRAL
+// path in applyValidatedOutput respectively, neither of which this constant
+// touches.
+const MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION = 60;
 
 // 2026-07-18: deterministic ground-truth guard on SPECIALIST_REFERRAL — the
 // same "trust but verify" principle validateModelOutput already applies to
@@ -379,13 +387,30 @@ function applyValidatedOutput(session, output, candidates, text) {
   // fire at most once per order episode.
   const orderConfirmed = allFieldsPresent && output.order_data.confirmed === true && !session.orderPlaced;
 
-  let humanHandover = output.human_handover === true || noProgressTurns >= MAX_NO_PROGRESS_TURNS;
-  // Only trusted when the MODEL itself asserted the handover (persona rule
-  // 10) — the noProgressTurns backstop above can also set humanHandover=true
-  // with no corresponding handover_reason from the model, which must fall
-  // through to the generic "handed to a human" logging, not be mistaken for
-  // a specialist referral.
-  let handoverReason = output.human_handover === true ? output.handover_reason || null : null;
+  // 2026-08-04 zero-lock/zero-handover safeguard (store owner directive): the
+  // bot must never auto-silence itself or hand off due to noProgressTurns,
+  // a repeated message, or the model's own unconstrained "customer seems
+  // confused/angry" judgment (the old CUSTOMER_REQUEST self-trigger,
+  // persona rule 10-a — removed from the prompt, see llmSystemPrompt.js) —
+  // none of those are hard evidence a customer actually needs a human. Only
+  // two handover_reason values are ever trusted from the model: SPECIALIST_REFERRAL
+  // (independently verified against a real clinical-severity keyword below,
+  // unchanged) and the new LONG_CONVERSATION_UNRESOLVED (independently
+  // verified against the actual message count further below). Any other
+  // claimed reason — including CUSTOMER_REQUEST, or human_handover=true with
+  // no reason at all — is never trusted from the model alone. A genuinely
+  // explicit "let me talk to a human" request is still fully handled: by
+  // escalationDetector.js's deterministic keyword check earlier in
+  // handleMessage, which short-circuits before the LLM is ever called, not
+  // by anything here.
+  const claimedReason = output.human_handover === true ? output.handover_reason || null : null;
+  if (output.human_handover === true && claimedReason !== 'SPECIALIST_REFERRAL' && claimedReason !== 'LONG_CONVERSATION_UNRESOLVED') {
+    logger.warn(
+      `LLM agent asserted human_handover=true with untrusted reason "${claimedReason || 'none'}" (customer message: "${text}") — ignoring, not a hard-evidence handover trigger.`
+    );
+  }
+  let humanHandover = claimedReason === 'SPECIALIST_REFERRAL' || claimedReason === 'LONG_CONVERSATION_UNRESOLVED';
+  let handoverReason = humanHandover ? claimedReason : null;
 
   // Deterministic ground-truth check (see hasClinicalSeverityKeyword above) —
   // never trust a SPECIALIST_REFERRAL assertion at face value. If the
@@ -419,6 +444,40 @@ function applyValidatedOutput(session, output, candidates, text) {
     specialistReferralDowngraded = true;
   }
 
+  // Defensive symmetry with the SPECIALIST_REFERRAL reply-text check above:
+  // the model is no longer instructed to write this exact sentence itself
+  // (see llmSystemPrompt.js — CUSTOMER_REQUEST is now handled exclusively by
+  // escalationDetector.js, before the LLM is ever called), but if it ever
+  // does anyway (a stale fine-tune, a fallback tier trained on old data,
+  // etc.), this must not reach the customer as if it were a real, verified
+  // handover.
+  const CUSTOMER_REQUEST_REPLY_MARKER = 'تقدر تتواصل مع خدمة العملاء الحقيقيين';
+  let customerRequestReplyDowngraded = false;
+  if (!humanHandover && typeof output.reply_text === 'string' && output.reply_text.includes(CUSTOMER_REQUEST_REPLY_MARKER)) {
+    logger.warn(
+      `LLM agent wrote the CUSTOMER_REQUEST hand-off sentence into reply_text with no trusted handover trigger (customer message: "${text}") — replacing with a normal consultation reply.`
+    );
+    customerRequestReplyDowngraded = true;
+  }
+
+  // 2026-08-04: LONG_CONVERSATION_UNRESOLVED is only ever legitimate once
+  // this session has actually crossed the message-volume ceiling — the LLM
+  // is asked to make a genuine judgment call here (see
+  // buildLongConversationSection in llmSystemPrompt.js; the store owner
+  // explicitly wants the model's own read of "does this customer still need
+  // a human" trusted for this one case), but *eligibility* to even ask that
+  // question is still deterministic and verified here, never just assumed
+  // from the model's claim.
+  let longConversationDowngraded = false;
+  if (handoverReason === 'LONG_CONVERSATION_UNRESOLVED' && !((session.inboundMessageCount || 0) > MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION)) {
+    logger.warn(
+      `LLM agent asserted LONG_CONVERSATION_UNRESOLVED handover but session.inboundMessageCount (${session.inboundMessageCount || 0}) hasn't crossed ${MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION} — downgrading to a normal consultation instead of handing off.`
+    );
+    humanHandover = false;
+    handoverReason = null;
+    longConversationDowngraded = true;
+  }
+
   let recommendedProduct = session.recommendedProduct || null;
   let shownProductIds = session.shownProductIds || [];
   const mentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
@@ -447,6 +506,8 @@ function applyValidatedOutput(session, output, candidates, text) {
     shownProductIds,
     noProgressTurns,
     specialistReferralDowngraded,
+    customerRequestReplyDowngraded,
+    longConversationDowngraded,
   };
 }
 
@@ -525,16 +586,18 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
       };
     }
 
+    // Only remaining path here as of 2026-08-04 (SPECIALIST_REFERRAL has its
+    // own branch above; CUSTOMER_REQUEST/noProgressTurns/repeated-message no
+    // longer reach this function at all — see applyValidatedOutput).
     const adminNotification =
-      `🆘 الوكيل الذكي حوّل المحادثة لفريق بشري\n` +
+      `🆘 الوكيل الذكي حوّل المحادثة لفريق بشري (محادثة طويلة، تخطت ${MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION} رسالة)\n` +
       `رقم العميل: ${phone}\n` +
-      `آخر رسالة: ${text}\n` +
-      `سبب: ${output.human_handover ? 'طلب العميل أو ارتباك واضح' : `لا تقدم بعد ${applied.noProgressTurns} محاولات`}`;
+      `آخر رسالة: ${text}`;
     return {
       logEntry: {
         ...baseFields,
         orderStatus: resolveEarlyStageOrderStatus(applied.orderData, applied.recommendedProduct),
-        notes: 'تم التحويل لفريق بشري عبر الوكيل الذكي',
+        notes: `تم التحويل لفريق بشري عبر الوكيل الذكي بعد ${session.inboundMessageCount || 0} رسالة من العميل`,
       },
       adminNotification,
     };
@@ -687,6 +750,19 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const previousUpdatedAt = session.updatedAt;
   const trimmedText = (text || '').trim();
 
+  // 2026-08-04 zero-lock safeguard: counts every real inbound customer
+  // message toward the >60-message long-conversation threshold (see
+  // MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION below) — incremented here,
+  // before any other branch, so it reflects true message volume regardless
+  // of which code path eventually handles this turn (escalation/repetition/
+  // website-order/delivery-feedback short-circuits all still count). Reset
+  // on a new episode (same 6h gap boundary buildCustomerProfile already
+  // uses below) so "a single session" doesn't mean "this customer's entire
+  // lifetime history with the store".
+  const isNewEpisode = !previousUpdatedAt || Date.now() - previousUpdatedAt > NEW_EPISODE_GAP_MS;
+  const inboundMessageCount = isNewEpisode ? 1 : (session.inboundMessageCount || 0) + 1;
+  updateSession(chatId, { inboundMessageCount });
+
   if (session.nudgeSentAt) {
     updateSession(chatId, { nudgeSentAt: null });
   }
@@ -728,34 +804,20 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return buildEscalationResponse(getSession(chatId), phone, trimmedText);
   }
 
-  // Deterministic repetition-loop guard (2026-08-02 audit fix) — a customer
-  // repeating their exact previous message verbatim is checked against
-  // session state as it stood BEFORE this turn (session.llm.history hasn't
-  // been updated with trimmedText yet). normalizeArabic keeps this in sync
-  // with how digit/text comparisons elsewhere in this file are normalized,
-  // so trivial Arabic-Indic-digit or whitespace differences don't defeat it.
+  // Deterministic repetition tracking (2026-08-02) — a customer repeating
+  // their exact previous message verbatim is checked against session state
+  // as it stood BEFORE this turn (session.llm.history hasn't been updated
+  // with trimmedText yet). normalizeArabic keeps this in sync with how
+  // digit/text comparisons elsewhere in this file are normalized, so trivial
+  // Arabic-Indic-digit or whitespace differences don't defeat it. 2026-08-04
+  // zero-lock safeguard: this used to force a handover on the 3rd repeat —
+  // removed (repeating yourself isn't hard evidence a human is needed); the
+  // counter now only drives the soft one-time prompt nudge below
+  // (consecutiveRepeats === 1), never a forced silence.
   const priorUserTurns = ((session.llm && session.llm.history) || []).filter((turn) => turn.role === 'user');
   const lastUserText = priorUserTurns.length > 0 ? priorUserTurns[priorUserTurns.length - 1].content : null;
   const isRepeatedMessage = Boolean(trimmedText && lastUserText && normalizeArabic(lastUserText).trim() === normalizeArabic(trimmedText).trim());
   const consecutiveRepeats = isRepeatedMessage ? (session.consecutiveRepeats || 0) + 1 : 0;
-
-  if (consecutiveRepeats >= MAX_CONSECUTIVE_REPEATS) {
-    updateSession(chatId, {
-      humanHandover: true,
-      humanHandoffAt: Date.now(),
-      stage: STAGES.CLOSED,
-      noProgressTurns: 0,
-      consecutiveRepeats: 0,
-    });
-    return {
-      reply: 'حسيت إن ردودي مش بتوصلك صح 🌸 خليني أوصلك بفريقنا يقدروا يساعدوك بشكل مباشر أكتر.',
-      logEntry: {
-        ...baseLogFields(getSession(chatId), phone, trimmedText),
-        notes: `العميل كرر نفس الرسالة ${consecutiveRepeats + 1} مرات متتالية من غير تقدم — تم التحويل تلقائيًا لفريق بشري`,
-      },
-      adminNotification: `🔁 عميل كرر نفس الرسالة عدة مرات من غير رد مفيد — تم التحويل تلقائيًا\nرقم العميل: ${phone}\nالرسالة: ${trimmedText}`,
-    };
-  }
 
   // Deterministic, free, no API call — see websiteOrderDetector.js. Checked
   // early, same priority tier as escalation above: a recognized website
@@ -866,6 +928,14 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   // clicked the ad every single turn.
   const adLandingForPrompt =
     session.adLandingPending && session.recommendedProduct ? { product: session.recommendedProduct } : null;
+  // 2026-08-04 zero-lock safeguard: only becomes true once this session has
+  // actually crossed the message-volume ceiling — see
+  // MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION. Tells the model to make a
+  // genuine contextual judgment call about whether this customer still needs
+  // a real human agent right now, rather than assuming the count alone means
+  // anything — applyValidatedOutput independently verifies eligibility
+  // (inboundMessageCount) before ever trusting the model's resulting claim.
+  const longConversationPending = inboundMessageCount > MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION;
   const systemInstruction = buildSystemPrompt(
     candidates,
     validBundleComplement,
@@ -875,11 +945,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     websiteOrderForPrompt,
     campaignKnowledge.getActiveOffers(),
     // Soft repetition-loop nudge — exactly the 2nd identical message in a
-    // row (the hard MAX_CONSECUTIVE_REPEATS handover above only fires on the
-    // 3rd), so the model gets one chance to break the loop itself before the
-    // deterministic escalation takes over.
+    // row, so the model gets one chance to break the loop itself. No longer
+    // followed by a forced handover on the 3rd repeat (2026-08-04 zero-lock
+    // safeguard) — repeating yourself isn't hard evidence a human is needed.
     consecutiveRepeats === 1,
-    adLandingForPrompt
+    adLandingForPrompt,
+    longConversationPending
   );
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', content: trimmedText }];
@@ -969,12 +1040,13 @@ async function handleMessage({ chatId, phone, text, senderName }) {
 
   const applied = applyValidatedOutput(session, validated, candidates, trimmedText);
 
-  // A downgraded SPECIALIST_REFERRAL means validated.reply_text is still the
-  // model's (now-rejected) hand-off line — swap it for the generic
-  // continuation before it's saved to history or returned to the customer,
-  // so the two are never inconsistent (customer told "you need a
-  // specialist" while everything else in the system treats it as routine).
-  if (applied.specialistReferralDowngraded) {
+  // A downgraded SPECIALIST_REFERRAL/CUSTOMER_REQUEST/LONG_CONVERSATION_UNRESOLVED
+  // means validated.reply_text may still be the model's (now-rejected)
+  // hand-off line — swap it for the generic continuation before it's saved
+  // to history or returned to the customer, so the two are never
+  // inconsistent (customer told "you need a specialist"/"talk to a human"
+  // while everything else in the system treats it as routine).
+  if (applied.specialistReferralDowngraded || applied.customerRequestReplyDowngraded || applied.longConversationDowngraded) {
     validated.reply_text = NORMAL_CONSULTATION_FALLBACK;
   }
 
@@ -1000,7 +1072,8 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     llm: { history: historyAfterModel },
     // Persists the repetition count computed near the top of this function
     // (0 if this turn's message didn't repeat the last one) so next turn's
-    // comparison has the right running count — see MAX_CONSECUTIVE_REPEATS.
+    // comparison has the right running count (drives only the soft prompt
+    // nudge now, never a forced handover — see where it's computed above).
     consecutiveRepeats,
     // One-shot: this reply is the proactive ad-landing greeting (if any was
     // pending), so it must not fire again on the customer's next ordinary
