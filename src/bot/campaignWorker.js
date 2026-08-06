@@ -347,7 +347,17 @@ async function runCampaignTick(sendMessageFn) {
     return;
   }
 
-  const candidates = rows.filter((r) => r.campaignStatus === 'PENDING' && !r.optOut && r.touches < MAX_TOUCHES_PER_CONTACT);
+  // 2026-08-06 fix: Blocked/Bot-Paused contacts were never excluded from
+  // the automated rotation before — only the live inbound-message handler
+  // checked those flags. A plain filter here (not a classifyLeadForCampaign
+  // block+reclassify) is deliberate: Bot Paused is often temporary, and
+  // reclassifying a paused row's campaignStatus away from PENDING would
+  // strand it there even after the owner unpauses, since nothing would ever
+  // move it back. Filtering means it naturally re-enters candidacy the
+  // moment the flag clears, with no Sheet write needed either way.
+  const candidates = rows.filter(
+    (r) => r.campaignStatus === 'PENDING' && !r.optOut && !r.botPaused && !r.blocked && r.touches < MAX_TOUCHES_PER_CONTACT
+  );
   let next = null;
   for (const row of candidates) {
     const classification = classifyLeadForCampaign(row);
@@ -464,6 +474,12 @@ async function runSendNowCheck(sendMessageFn) {
         // Opt-out is a hard, trust-sensitive boundary — a manual override
         // still must never message someone who explicitly asked to stop.
         logger.warn(`Send Now was set for ${row.chatId}, but they've opted out — not sending.`);
+      } else if (row.botPaused || row.blocked) {
+        // 2026-08-06 fix: same hard-boundary reasoning as optOut above —
+        // Blocked/Bot-Paused is the owner's own standing decision about this
+        // contact, and a manual per-row trigger shouldn't be able to bypass
+        // it any more than opt-out can.
+        logger.warn(`Send Now was set for ${row.chatId}, but they're Blocked or Bot Paused — not sending.`);
       } else if (activeOffers.length === 0) {
         logger.warn(`Send Now was set for ${row.chatId}, but no offer is currently PUSH — nothing to send.`);
       } else {

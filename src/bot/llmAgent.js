@@ -253,8 +253,19 @@ async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProdu
   const candidates = await productSearch.searchProducts(text, { excludeIds });
   let merged = candidates;
   [recommendedProduct, campaignOfferProduct].forEach((sticky) => {
-    if (sticky && !merged.some((p) => p.id === sticky.id)) {
-      merged = [sticky, ...merged];
+    if (!sticky) return;
+    // Re-fetch live rather than trusting the cached session object, which is
+    // a snapshot frozen at the moment it was first recommended — the 5-min
+    // Sheets refresh replaces productMatcher's whole product list wholesale,
+    // so a sticky candidate's own .inStock/.price never update on their own.
+    // 2026-08-06 fix: this used to let an item that sold out (or had its
+    // price changed) mid-conversation keep being actively re-quoted/offered
+    // for the rest of that session. Dropping it here (rather than keeping it
+    // with stale data) means the model simply never sees it as a candidate
+    // once it's gone — it can't mention, price, or offer to confirm it.
+    const live = productMatcher.getById(sticky.id);
+    if (live && live.inStock !== false && !merged.some((p) => p.id === live.id)) {
+      merged = [live, ...merged];
     }
   });
   return merged;
@@ -375,17 +386,70 @@ function applyValidatedOutput(session, output, candidates, text) {
   const noProgressTurns = orderCollectionActive && !madeProgress ? (session.noProgressTurns || 0) + 1 : 0;
 
   const allFieldsPresent = Boolean(orderData.customerName && orderData.deliveryAddress && orderData.altPhone);
+
+  // Resolve this turn's product before deciding order-completion — needed
+  // to tell "the model re-asserting the SAME already-confirmed order"
+  // (must stay blocked) apart from "a genuine second, different order in
+  // the same session" (must NOT stay blocked — see 2026-08-06 fix below).
+  // Moved up from where this used to live, right after the handover logic;
+  // behavior of this block itself is unchanged.
+  let recommendedProduct = session.recommendedProduct || null;
+  let shownProductIds = session.shownProductIds || [];
+  const mentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
+  if (mentionedIds.length > 0) {
+    const primary = candidates.find((p) => p.id === mentionedIds[0]);
+    if (primary) recommendedProduct = primary;
+    shownProductIds = [...new Set([...shownProductIds, ...mentionedIds])];
+  }
+
   // Root cause of the 2026-08-02 triple-logging incident: order fields stay
   // present in session.orderData forever once collected, and the model keeps
   // asserting order_data.confirmed=true on later turns of the same closed
   // conversation (e.g. a customer correcting phrasing after "تم تأكيد الطلب
-  // بنجاح") — with nothing here checking whether this session's order was
-  // already confirmed, each such turn re-triggered the full order-confirmed
-  // branch (admin notification + a new Order History/Confirmed_Orders row).
-  // session.orderPlaced is sticky for the life of the session (only ever
-  // reset to false by the escalation handler), so this makes "confirmed"
-  // fire at most once per order episode.
-  const orderConfirmed = allFieldsPresent && output.order_data.confirmed === true && !session.orderPlaced;
+  // بنجاح"). The original fix gated on session-wide session.orderPlaced,
+  // sticky for the life of the session — which correctly blocked the
+  // re-assertion case, but as an unintended side effect also permanently
+  // blocked a genuinely NEW, different product ordered later in the same
+  // session from ever completing (2026-08-06 audit finding: a repeat
+  // purchase in one chat got no admin ping and no Order History row).
+  //
+  // Fix: track *which product ids* have already been confirmed this
+  // session (session.confirmedProductIds) and gate on that instead, when a
+  // product is actually resolved for this turn. Re-asserting order #1 for
+  // the same product id stays blocked exactly as before; a different
+  // product's order_data.confirmed=true is now allowed through. Only
+  // falls back to the old session-wide gate when no product is resolved
+  // at all (rare — order data this complete almost always has one), so
+  // that edge case stays exactly as conservative as it was before this fix.
+  const confirmedProductIds = session.confirmedProductIds || [];
+  const isAlreadyConfirmedProduct = Boolean(recommendedProduct && confirmedProductIds.includes(recommendedProduct.id));
+
+  // Hard backstop, independent of selectCandidatesForTurn's own out-of-stock
+  // filtering above: a customer can reach "everything is filled in, please
+  // confirm" on one turn and simply reply "yes" on the next without
+  // re-mentioning the product, so mentionedIds (and therefore
+  // recommendedProduct) can be empty on the exact turn confirmed:true
+  // arrives — nothing upstream would re-check stock in that case. Re-verify
+  // live here, right at the moment of completion, rather than trusting
+  // whatever recommendedProduct's cached .inStock said when it was first
+  // set (2026-08-06 fix — see selectCandidatesForTurn's comment for why the
+  // cached object can be stale).
+  const recommendedProductLive = recommendedProduct ? productMatcher.getById(recommendedProduct.id) : null;
+  const recommendedProductNowOutOfStock = Boolean(recommendedProduct && (!recommendedProductLive || recommendedProductLive.inStock === false));
+
+  const orderConfirmed =
+    allFieldsPresent &&
+    output.order_data.confirmed === true &&
+    !recommendedProductNowOutOfStock &&
+    (recommendedProduct ? !isAlreadyConfirmedProduct : !session.orderPlaced);
+  const updatedConfirmedProductIds =
+    orderConfirmed && recommendedProduct ? [...new Set([...confirmedProductIds, recommendedProduct.id])] : confirmedProductIds;
+  // Would have confirmed (all data present, model said confirmed:true, not
+  // already-confirmed) if only the product hadn't just gone out of stock —
+  // used below to swap the model's reply for an honest one instead of
+  // silently not confirming while reply_text still claims success.
+  const outOfStockAtConfirmation =
+    allFieldsPresent && output.order_data.confirmed === true && recommendedProductNowOutOfStock && !isAlreadyConfirmedProduct;
 
   // 2026-08-04 zero-lock/zero-handover safeguard (store owner directive): the
   // bot must never auto-silence itself or hand off due to noProgressTurns,
@@ -478,15 +542,6 @@ function applyValidatedOutput(session, output, candidates, text) {
     longConversationDowngraded = true;
   }
 
-  let recommendedProduct = session.recommendedProduct || null;
-  let shownProductIds = session.shownProductIds || [];
-  const mentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
-  if (mentionedIds.length > 0) {
-    const primary = candidates.find((p) => p.id === mentionedIds[0]);
-    if (primary) recommendedProduct = primary;
-    shownProductIds = [...new Set([...shownProductIds, ...mentionedIds])];
-  }
-
   // Deterministic coarse mapping onto the existing STAGES enum — purely so
   // cartRecovery.js/chatLogger keep working unchanged regardless of agent mode.
   let stage;
@@ -499,6 +554,8 @@ function applyValidatedOutput(session, output, candidates, text) {
   return {
     orderData,
     orderConfirmed,
+    confirmedProductIds: updatedConfirmedProductIds,
+    outOfStockAtConfirmation,
     humanHandover,
     handoverReason,
     stage,
@@ -1098,6 +1155,14 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     validated.reply_text = NORMAL_CONSULTATION_FALLBACK;
   }
 
+  // The model thought this turn confirmed the order (its reply_text almost
+  // certainly says so) but applyValidatedOutput just blocked it because the
+  // product went out of stock — never let the "confirmed" claim reach the
+  // customer when nothing was actually confirmed.
+  if (applied.outOfStockAtConfirmation) {
+    validated.reply_text = MESSAGES.outOfStockAtConfirmation;
+  }
+
   const historyAfterUser = pushHistory(history, 'user', trimmedText);
   const historyAfterModel = pushHistory(historyAfterUser, 'assistant', validated.reply_text);
 
@@ -1113,6 +1178,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // this only ever fires on a genuinely new handoff.
     humanHandoffAt: applied.humanHandover ? Date.now() : session.humanHandoffAt,
     orderPlaced: applied.orderConfirmed || session.orderPlaced,
+    confirmedProductIds: applied.confirmedProductIds,
     recommendedProduct: applied.recommendedProduct,
     shownProductIds: applied.shownProductIds,
     customerName: applied.orderData.customerName || session.customerName,

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const googleSheets = require('../services/googleSheets');
 const conversationMemory = require('./conversationMemory');
+const campaignWorker = require('./campaignWorker');
 const logger = require('../utils/logger');
 const { sleep } = require('../utils/helpers');
 
@@ -67,6 +68,14 @@ async function checkForDeliveredOrders(sendMessageFn, resolvePhoneToChatIdFn) {
         logger.warn(`Order for ${phone} is marked "Delivered" but no matching WhatsApp chat was found — cannot send the follow-up. Will retry next scan.`);
       } else if (conversationMemory.isHumanHandoffCooldownActive(conversationMemory.getSession(chatId))) {
         logger.info(`Skipping delivery follow-up for ${phone} — customer is in the 24h human handoff cooldown. Will retry next scan.`);
+      } else if (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId)) {
+        // 2026-08-06 fix: this scheduler never checked the owner's
+        // Blocked/Bot-Paused flags before — only the live inbound-message
+        // handler did. followupSent is deliberately left false here (like
+        // the cooldown branch above), so this is a cheap re-check every
+        // scan for as long as the flag stays set — never sends, never marks
+        // done, so it recovers on its own the moment the owner unpauses.
+        logger.info(`Skipping delivery follow-up for ${phone} — contact is Blocked or Bot Paused.`);
       } else {
         try {
           if (sentCount > 0) await sleep(SEND_DELAY_MS);

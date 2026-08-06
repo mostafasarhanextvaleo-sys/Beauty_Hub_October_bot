@@ -176,6 +176,12 @@ function getSession(chatId) {
       // cleared when the cooldown expires; a new handoff just overwrites it.
       humanHandoffAt: null,
       orderPlaced: false,
+      // Product ids already confirmed this session (llmAgent.js's
+      // applyValidatedOutput) — lets a genuinely new, different product
+      // confirm even after orderPlaced is stuck true from an earlier order,
+      // while still blocking the model re-asserting the SAME order's
+      // confirmed:true on later turns (2026-08-06 fix).
+      confirmedProductIds: [],
       // Set by deliveryFollowup.js when the "did it arrive ok?" message is
       // sent; llmAgent.js checks this on the customer's next reply to know
       // whether to interpret it as delivery-confirmation feedback rather

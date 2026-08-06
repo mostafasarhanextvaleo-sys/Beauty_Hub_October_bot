@@ -4,6 +4,7 @@ const chatLogger = require('../utils/chatLogger');
 const { runExclusive } = require('../utils/chatLock');
 const conversationMemory = require('./conversationMemory');
 const { pushHistory } = require('./llmAgent');
+const campaignWorker = require('./campaignWorker');
 const { STAGES, isHumanHandoffCooldownActive } = conversationMemory;
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // how often we scan for idle chats
@@ -36,8 +37,16 @@ function pickVariant(variants) {
 // in the Leads sheet. Price-anchored on purpose — the previous single
 // message ("لسه مهتمة بكذا؟") never mentioned the price the customer was
 // actually deciding on, which is the single most persuasive fact available.
+// 2026-08-06 fix: variant a used to say "لسه محجوز عشانك" (still reserved
+// for you) — not literally true, since no inventory-hold/reservation system
+// exists anywhere in this codebase (see SECOND_NUDGE_WITH_PRICE's comment
+// below, which already rejected a fabricated "stock running out" claim for
+// this exact honesty reason — this phrase just implied the same thing from
+// the other direction and got missed). Swapped for "لسه متاح" (still
+// available), which keeps the same warm, price-anchored persuasion without
+// claiming an active hold that doesn't exist.
 const FIRST_NUDGE_WITH_PRICE = [
-  { id: 'nudge1_price_a', text: (name, price) => `الـ${name} اللي سألتي عليه لسه محجوز عشانك بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟` },
+  { id: 'nudge1_price_a', text: (name, price) => `الـ${name} اللي سألتي عليه لسه متاح بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟` },
   { id: 'nudge1_price_b', text: (name, price) => `هاي، لسه فاكراك مهتمة بـ${name} (${price} جنيه) — محتاجة أي تفاصيل زيادة؟` },
 ];
 
@@ -53,9 +62,12 @@ const FIRST_NUDGE_WITH_PRICE = [
 // noticing it wasn't true costs more trust than the nudge is worth.
 const SECOND_NUDGE_WITH_PRICE = [
   {
+    // 2026-08-06 fix: same "لسه محجوز عشانك" honesty issue as
+    // FIRST_NUDGE_WITH_PRICE's variant a above, swapped the same way — the
+    // real free-shipping promise right after it is unaffected and stays as-is.
     id: 'nudge2_shipping_a',
     text: (name, price) =>
-      `الـ${name} اللي سألتي عليه لسه محجوز عشانك بـ${price} جنيه بس! 🌸 أكدي الأوردر خلال 24 ساعة كده وهضيفلك توصيل مجاني هدية منا ليكي.`,
+      `الـ${name} اللي سألتي عليه لسه متاح بـ${price} جنيه بس! 🌸 أكدي الأوردر خلال 24 ساعة كده وهضيفلك توصيل مجاني هدية منا ليكي.`,
   },
   {
     id: 'nudge2_shipping_b',
@@ -105,6 +117,13 @@ async function scanAndSendNudges(sendMessageFn) {
   for (const [chatId, session] of entries) {
     if (!NUDGE_ELIGIBLE_STAGES.has(session.stage)) continue;
     if (session.orderPlaced || session.humanHandover) continue;
+    // 2026-08-06 fix: this scheduler used to be the one automated sender
+    // that never checked the owner's Blocked/Bot-Paused flags — only the
+    // live inbound-message handler did. A number the owner explicitly
+    // marked Blocked ("as if the message never arrived") or Paused (owner
+    // is handling them manually right now) could still get an unprompted
+    // cart-recovery nudge.
+    if (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId)) continue;
     // Explicit on top of the humanHandover check above (which already
     // covers this in practice, since a handed-off session's stage becomes
     // CLOSED) — named directly after the 24h cooldown concept so the intent
@@ -121,6 +140,9 @@ async function scanAndSendNudges(sendMessageFn) {
       if (!NUDGE_ELIGIBLE_STAGES.has(fresh.stage)) return;
       if (isHumanHandoffCooldownActive(fresh)) return;
       if (fresh.nudgeGaveUp) return;
+      // Same belt-and-suspenders re-check as orderPlaced/humanHandover below —
+      // the flag could have flipped while this scan was in flight.
+      if (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId)) return;
       // Belt-and-suspenders independent of stage mapping — a free-form LLM
       // conversation doesn't have a rigid linear machine underneath it, so
       // this guards directly against ever nudging a completed/handed-off chat
