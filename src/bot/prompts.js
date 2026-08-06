@@ -193,6 +193,29 @@ const ORDER_CANCEL_KEYWORDS = [
   'لا مش دلوقتي',
 ];
 
+// Scoped to "cancel an order that's already been confirmed" (session.orderPlaced
+// === true in llmAgent.js), so this is deliberately narrower/higher-confidence
+// than ORDER_CANCEL_KEYWORDS above: that list also matches generic pre-order
+// declines ("لا شكرا", "مش موافق") which are fine to read as "don't want this
+// recommendation" but would be dangerous to read as "cancel my placed order" —
+// e.g. a customer saying "مش موافقة على السعر ده" about a totally different,
+// later product must not cancel an order they already confirmed. Every phrase
+// here names the order itself ("الطلب"/"الاوردر") or is an unambiguous
+// cancel-verb ("كنسل").
+const ORDER_CANCELLATION_REQUEST_KEYWORDS = [
+  'كنسل',
+  'الغي الطلب',
+  'الغي الاوردر',
+  'الغاء الطلب',
+  'الغاء الاوردر',
+  'لغيت الطلب',
+  'لغيت الاوردر',
+  'وقف الطلب',
+  'شيل الطلب',
+  'مش عايزة الطلب',
+  'مش عايز الطلب',
+];
+
 // Very short (1-word) yes/no. Must go through containsWord() (whole-word),
 // not containsAny() (substring) — "لا" is a substring of "الاسم", so a
 // customer typing "الاسم مصطفى..." must not be misread as saying "no".
@@ -236,6 +259,7 @@ module.exports = {
   HAIR_TYPE_KEYWORDS,
   ORDER_CONFIRM_KEYWORDS,
   ORDER_CANCEL_KEYWORDS,
+  ORDER_CANCELLATION_REQUEST_KEYWORDS,
   ADDRESS_CONFIRM_YES_KEYWORDS,
   ADDRESS_CONFIRM_NO_KEYWORDS,
   SHORT_YES_WORDS,

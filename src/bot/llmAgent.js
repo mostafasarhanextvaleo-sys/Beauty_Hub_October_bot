@@ -12,7 +12,7 @@ const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
 const openaiService = require('../services/openaiService');
 const { buildSystemPrompt, RESPONSE_SCHEMA } = require('./llmSystemPrompt');
-const { MESSAGES } = require('./prompts');
+const { MESSAGES, ORDER_CANCELLATION_REQUEST_KEYWORDS } = require('./prompts');
 const config = require('../config');
 const logger = require('../utils/logger');
 const trainingDataLogger = require('../utils/trainingDataLogger');
@@ -742,6 +742,45 @@ async function handleWebsiteOrder({ chatId, phone, trimmedText, session, order }
   };
 }
 
+// Deterministic, free, no API call — same reasoning as escalation/delivery-
+// feedback/order-status above: whether a confirmed order gets cancelled must
+// decide a real Sheet status write and page the admin, so it must never
+// depend on the model merely saying "cancelled" in reply_text with nothing
+// behind it. That gap was exactly the 2026-08-06 audit's root-cause finding:
+// buildOrderStatusReply's 'Cancelled' case already existed (for when a
+// customer later asks "where's my order" post-cancellation), but nothing in
+// the live path ever produced that status — the LLM's reply was purely
+// conversational, so a cancelled-by-the-customer order still sat in the
+// Sheet as a live, confirmed order for staff/delivery. Only armed once
+// session.orderPlaced is true (see ORDER_CANCELLATION_REQUEST_KEYWORDS in
+// prompts.js for why this list is narrower than ORDER_CANCEL_KEYWORDS).
+async function handleOrderCancellationRequest({ chatId, phone, trimmedText, session }) {
+  await googleSheets.updateOrderStatus(phone, 'Cancelled');
+
+  const history = (session.llm && session.llm.history) || [];
+  const historyAfterUser = pushHistory(history, 'user', trimmedText);
+  const historyAfterModel = pushHistory(historyAfterUser, 'assistant', MESSAGES.orderCancelled);
+  updateSession(chatId, {
+    orderPlaced: false,
+    llm: { history: historyAfterModel },
+  });
+
+  const adminNotification =
+    `❌ عميل لغى طلب مؤكد (وكيل ذكي)\n` +
+    `رقم العميل: ${phone}\n` +
+    `رسالته: ${trimmedText}`;
+
+  return {
+    reply: MESSAGES.orderCancelled,
+    logEntry: {
+      ...baseLogFields(getSession(chatId), phone, trimmedText),
+      orderStatus: 'Cancelled',
+      notes: 'العميل طلب إلغاء طلب مؤكد - تم تحديث حالة الطلب في الشيت مباشرة',
+    },
+    adminNotification,
+  };
+}
+
 async function handleMessage({ chatId, phone, text, senderName }) {
   const session = getSession(chatId);
   // Captured before anything this turn touches the session — updateSession()
@@ -899,6 +938,15 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   // conversation history. Runs before any AI tier so it never costs a token.
   if (orderStatusDetector.isOrderStatusInquiry(trimmedText)) {
     return handleOrderStatusInquiry({ chatId, phone, trimmedText, session, history: (session.llm && session.llm.history) || [] });
+  }
+
+  // Deterministic, free, no API call — see handleOrderCancellationRequest
+  // above. Only armed once a real confirmed order exists to cancel; before
+  // that, these same words (or the broader ORDER_CANCEL_KEYWORDS) fall
+  // through to the LLM exactly as before — e.g. declining a first
+  // recommendation is not "cancel my order".
+  if (session.orderPlaced && containsAny(trimmedText, ORDER_CANCELLATION_REQUEST_KEYWORDS)) {
+    return handleOrderCancellationRequest({ chatId, phone, trimmedText, session });
   }
 
   // Rolling-window query (see buildSearchQuery above) — not bare trimmedText
