@@ -26,7 +26,13 @@ const logger = {
     console.warn(format('WARN', COLORS.warn, message));
   },
   error(message, err) {
-    console.error(format('ERROR', COLORS.error, message));
+    // Appended onto this same bracketed-timestamp line (not just the full
+    // stack printed below) so it survives log tooling that samples by
+    // matching a leading "[timestamp]" per line — e.g.
+    // scripts/scheduledReport.js's gatherPm2ErrorStats(), which otherwise
+    // silently drops the un-bracketed stack-trace lines beneath it.
+    const detail = err ? ` — ${err.message || err}` : '';
+    console.error(format('ERROR', COLORS.error, `${message}${detail}`));
     if (err && err.stack) {
       console.error(err.stack);
     } else if (err) {
