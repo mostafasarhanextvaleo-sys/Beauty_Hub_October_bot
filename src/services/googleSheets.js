@@ -15,8 +15,18 @@ const emailAlert = require('../utils/emailAlert');
 // were silently swallowed — real leads were lost, not just delayed. This
 // wraps each Sheets call with a bounded retry on transient failures, and
 // caps how many concurrent appendLead operations run at once.
+//
+// 2026-08-07 root-cause audit of the ~910-line error spike this period: 907
+// of those lines were "getaddrinfo EAI_AGAIN" against sheets.googleapis.com/
+// www.googleapis.com — a transient DNS blip on the host, not the credentials
+// (a live token+API check during this audit succeeded immediately) or API
+// quota (zero 429/quota-exceeded lines in the whole log). The old 2-retry/
+// 500ms budget (~1.5s total) was too short to survive most of these blips;
+// widened to 3 retries/750ms (~5.6s total worst case) so a several-second DNS
+// hiccup gets absorbed instead of surfacing as a logged failure on every
+// independent Sheets operation polling at the time.
 function sheetsCall(fn) {
-  return retryAsync(fn, { retries: 2, baseDelayMs: 500, isRetryable: isTransientError });
+  return retryAsync(fn, { retries: 3, baseDelayMs: 750, isRetryable: isTransientError });
 }
 
 const LEADS_SHEET_NAME = 'Leads';
@@ -1290,9 +1300,11 @@ async function loadPhoneRowCache() {
 async function scanLeadsStatuses() {
   if (!enabled) return [];
   try {
-    const result = await sheetsClient.spreadsheets.values.get(
-      { spreadsheetId: config.googleSheetId, range: `${LEADS_SHEET_NAME}!C2:H` },
-      { timeout: REQUEST_TIMEOUT_MS }
+    const result = await sheetsCall(() =>
+      sheetsClient.spreadsheets.values.get(
+        { spreadsheetId: config.googleSheetId, range: `${LEADS_SHEET_NAME}!C2:H` },
+        { timeout: REQUEST_TIMEOUT_MS }
+      )
     );
     const rows = result.data.values || [];
     return rows
@@ -1819,6 +1831,7 @@ module.exports = {
   getCurrentOrderStatus,
   isEnabled,
   getClient,
+  sheetsCall,
   recordSuccess,
   getLastSuccessAt,
   isStale,

@@ -62,9 +62,11 @@ async function fetchProducts() {
   if (!client) return null;
 
   try {
-    const result = await client.spreadsheets.values.get(
-      { spreadsheetId: config.googleSheetId, range: PRODUCTS_RANGE },
-      { timeout: googleSheets.REQUEST_TIMEOUT_MS }
+    const result = await googleSheets.sheetsCall(() =>
+      client.spreadsheets.values.get(
+        { spreadsheetId: config.googleSheetId, range: PRODUCTS_RANGE },
+        { timeout: googleSheets.REQUEST_TIMEOUT_MS }
+      )
     );
     const rows = result.data.values || [];
     googleSheets.recordSuccess();
