@@ -1,5 +1,5 @@
 const { runLimited } = require('./concurrencyLimiter');
-const { retryAsync } = require('./retry');
+const { retryAsync, isTransientError } = require('./retry');
 
 function withTimeout(promise, ms, label) {
   let timer;
@@ -30,7 +30,7 @@ async function resilientFetch(resourceKey, maxConcurrent, fetchFn, { timeoutMs, 
         }
         return response;
       },
-      { retries, baseDelayMs, isRetryable: (err) => RETRYABLE_STATUS.has(err.code) || /Timed out after|ECONNRESET|ETIMEDOUT|ENOTFOUND/.test(err.message || '') }
+      { retries, baseDelayMs, isRetryable: isTransientError }
     )
   );
 }
