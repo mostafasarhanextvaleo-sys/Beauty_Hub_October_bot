@@ -14,6 +14,7 @@ const adminAuth = require('../bot/adminAuth');
 const botControl = require('../bot/botControl');
 const emailAlert = require('../utils/emailAlert');
 const campaignWorker = require('../bot/campaignWorker');
+const deploymentAgent = require('../bot/deploymentAgent');
 
 // --- Admin broadcast/campaign feature — safety rails (see conversation with
 // the store owner 2026-07-14: whatsapp-web.js is an unofficial client, and
@@ -538,6 +539,23 @@ function createClient() {
         // everything else that follows (pause state, human-handoff cooldown,
         // etc.) whenever this phone is actually inside Admin Mode.
         if (config.adminWhatsappNumber && phone === config.adminWhatsappNumber) {
+          // 2026-08-06: checked first and unconditionally, independent of
+          // the Admin Mode ritual below — modeled on the existing
+          // session.awaitingDeliveryFeedback precedent (a contextual reply
+          // is trusted only because the system itself just proactively
+          // asked a specific question with a specific expected shape, never
+          // because it's a general command channel). If this ran
+          // after/inside the ritual dispatch instead, "Confirm 1" sent while
+          // Admin Mode happens to already be active would be swallowed by
+          // adminCommands.js's help-text fallback and never reach this
+          // feature at all.
+          const deploymentReply = await deploymentAgent.handleDeploymentMessage(message.body || '');
+          if (deploymentReply !== null) {
+            await client.sendMessage(message.from, deploymentReply);
+            logger.info(`Deployment-agent command handled for ${phone}: "${truncate(message.body || '', 120)}"`);
+            return;
+          }
+
           const modeResult = adminAuth.processAdminModeMessage(message.from, message.body || '');
           if (modeResult.consumed) {
             await client.sendMessage(message.from, modeResult.reply);

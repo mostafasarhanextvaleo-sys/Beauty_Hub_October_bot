@@ -11,6 +11,7 @@ const cartRecovery = require('./bot/cartRecovery');
 const deliveryFollowup = require('./bot/deliveryFollowup');
 const campaignWorker = require('./bot/campaignWorker');
 const campaignKnowledge = require('./bot/campaignKnowledge');
+const deploymentAgent = require('./bot/deploymentAgent');
 const emailAlert = require('./utils/emailAlert');
 const { runExclusive } = require('./utils/chatLock');
 
@@ -213,6 +214,30 @@ function startExpressServer() {
     }
   });
 
+  // 2026-08-06: hand-off point for scripts/scheduledReport.js (a standalone
+  // process run 3x/day via system cron) — deliberately NOT a direct write to
+  // pending_confirmations.json from that separate process. deploymentAgent.js
+  // is the sole writer of that file (via chatLock's runExclusive), so a
+  // report landing here while a live Confirm/Deploy action is mid-flight
+  // can never race it into a lost update. Same token-gate pattern as
+  // /admin/send-message above.
+  app.post('/admin/submit-report', async (req, res) => {
+    if (!config.adminSendToken || !tokensMatch(req.header('X-Admin-Send-Token'), config.adminSendToken)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { summary, actionItems } = req.body || {};
+    if (!summary || !Array.isArray(actionItems)) {
+      return res.status(400).json({ error: 'summary (string) and actionItems (array) are required.' });
+    }
+    try {
+      const newItems = await deploymentAgent.submitReport({ summary, actionItems });
+      res.json({ accepted: true, items: newItems });
+    } catch (err) {
+      logger.error('Failed to submit scheduled report to deploymentAgent.', err);
+      res.status(500).json({ error: 'Failed to process report.' });
+    }
+  });
+
   app.listen(config.port, () => {
     logger.success(`Health server listening on http://localhost:${config.port}`);
   });
@@ -249,6 +274,18 @@ async function main() {
     cartRecovery.startCartRecoveryScheduler(whatsappClient.sendMessageToChatId);
     deliveryFollowup.startDeliveryFollowupScheduler(whatsappClient.sendMessageToChatId, whatsappClient.buildPhoneToChatIdMap);
     campaignWorker.startCampaignWorker(whatsappClient.sendMessageToChatId);
+    // 2026-08-06: on every boot (including a fresh deploy this same feature
+    // just triggered), reconcile pending_confirmations.json — finish the
+    // "restarting" item's final WhatsApp confirmation once actually healthy,
+    // and mark any "drafting" item orphaned by an unrelated restart as
+    // draft_failed rather than leaving it stuck forever. A short settle
+    // delay so this isn't judged in the same instant WhatsApp connects,
+    // before Sheets/embeddings have necessarily finished their own checks.
+    setTimeout(() => {
+      deploymentAgent
+        .reconcileOnBoot(async () => whatsappClient.getStatus() === 'connected' && !googleSheets.isStale())
+        .catch((err) => logger.error('deploymentAgent boot reconciliation failed.', err));
+    }, 5000);
   });
 }
 
