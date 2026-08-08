@@ -84,6 +84,41 @@ function loadPersistedSessions() {
 // meaningless a month later anyway).
 const SESSION_EVICTION_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
+// 2026-08-08: action item from the health-diagnostic report — sessions idle
+// 72h+ were piling up in scheduledReport.js's stale24/stale72 pre-checkout
+// counts forever, because nothing ever moved them out of their in-progress
+// stage label. That backlog looked scarier than it was: item #6 in
+// pending_confirmations.json (2026-08-07) already confirmed cartRecovery.js
+// independently re-engages every nudge-eligible stale session on its own
+// 3h/24h schedule regardless of this — by 72h a session has either already
+// had both nudges with no reply (a normal terminal outcome, not "stuck"), or
+// was never nudge-eligible to begin with. This doesn't delete anything (that's
+// evictStaleSessions' job at 30 days) — it just relabels stage as CLOSED so
+// scheduledReport.js's `isPreCheckout` (which already excludes CLOSED) stops
+// counting a resolved/abandoned conversation as live backlog. Also fixes the
+// pre-existing cosmetic gap item #7 flagged: an orderPlaced session whose
+// stage never got advanced to CLOSED now gets swept up here too, same as any
+// other idle session. Setting stage alone never silences the bot for a
+// returning customer — see whatsapp/client.js:604, which gates replies only
+// on humanHandoffAt (a 24h cooldown), never on session.stage — so a customer
+// who messages again after archival gets a normal reply, not silence.
+const SESSION_ARCHIVE_THRESHOLD_MS = 72 * 60 * 60 * 1000; // 72 hours
+
+function archiveStaleSessions() {
+  const cutoff = Date.now() - SESSION_ARCHIVE_THRESHOLD_MS;
+  let archived = 0;
+  for (const [, session] of sessions) {
+    if (session.stage === STAGES.CLOSED) continue;
+    if ((session.updatedAt || 0) >= cutoff) continue;
+    session.stage = STAGES.CLOSED;
+    session.archivedAt = Date.now();
+    archived += 1;
+  }
+  if (archived > 0) {
+    logger.info(`Auto-archived ${archived} session(s) idle 72h+ (marked CLOSED, not deleted).`);
+  }
+}
+
 function evictStaleSessions() {
   const cutoff = Date.now() - SESSION_EVICTION_THRESHOLD_MS;
   let evicted = 0;
@@ -119,6 +154,7 @@ function evictStaleSessions() {
 // persist request always waits for the current one to finish rather than
 // racing it.
 async function persistSessionsNow() {
+  archiveStaleSessions();
   evictStaleSessions();
   const tmpPath = `${STATE_PATH}.tmp`;
   try {

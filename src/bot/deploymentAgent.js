@@ -14,7 +14,7 @@
 // avoiding a lost-update race between two separate OS processes.
 const fs = require('fs');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, execFileSync } = require('child_process');
 const logger = require('../utils/logger');
 const { runExclusive } = require('../utils/chatLock');
 const config = require('../config');
@@ -292,9 +292,22 @@ async function handleDeploy(id) {
   });
 
   try {
-    execSync(`git add -- ${filesToCommit.map((f) => JSON.stringify(f)).join(' ')}`, { cwd: REPO_ROOT, shell: '/bin/bash' });
+    // execFileSync (argv array, no shell) rather than execSync's shell string
+    // — item.title/item.draftSummary are LLM-generated prose that routinely
+    // contains markdown backticks (e.g. "the `category` field"). The old
+    // execSync(..., {shell: '/bin/bash'}) only JSON-escaped these strings,
+    // which quotes for JSON, not for bash: bash still expands `...`/$(...)/
+    // $VAR inside a double-quoted argument. Confirmed live in the pm2 error
+    // log — a draft summary's backtick-quoted "category" was executed as a
+    // command substitution, logging "category: command not found" (harmless
+    // by luck, since no such binary exists, but the same shape with a real
+    // command in a future draft summary would execute it against this
+    // production repo). execFileSync never invokes a shell to parse the
+    // argument at all, so this class of injection isn't just escaped, it's
+    // structurally impossible.
+    execFileSync('git', ['add', '--', ...filesToCommit], { cwd: REPO_ROOT });
     const commitMessage = `Deploy item #${id}: ${item.title}\n\n${item.draftSummary}\n\nvia WhatsApp Confirm/Deploy workflow`;
-    execSync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: REPO_ROOT, shell: '/bin/bash' });
+    execFileSync('git', ['commit', '-m', commitMessage], { cwd: REPO_ROOT });
   } catch (err) {
     logger.error(`Deploy commit failed for item ${id}.`, err);
     await withState((s) => {
@@ -315,11 +328,29 @@ async function handleDeploy(id) {
   // back up and healthy. Scheduled via setImmediate so the caller's own
   // client.sendMessage(reply) call gets a chance to start before this
   // synchronous, briefly-blocking restart fires.
+  //
+  // 2026-08-08: this used to be a synchronous execSync('pm2 restart ...')
+  // whose own child process — invoking `pm2 restart` on the very app this
+  // process IS — regularly got killed mid-command by the restart it just
+  // triggered, before the CLI could exit 0. execSync then threw and logged
+  // "pm2 restart failed for item N" as an ERROR even though the restart
+  // itself had already succeeded (confirmed against pm2.log/error.log: every
+  // one of these "failures" is immediately followed by a real
+  // "Received SIGINT. Shutting down gracefully" from the new boot). That
+  // false-alarm pattern is exactly what fed scheduledReport.js's "crash
+  // loop" framing in the diagnostic report — item #5 in
+  // pending_confirmations.json already found there was no real crash loop,
+  // just this log noise plus normal deploy-triggered restarts. Detached +
+  // unref'd spawn hands the restart to the OS/pm2 daemon independently of
+  // this process's lifetime, so it can't be killed mid-flight by the very
+  // restart it's requesting, and there's nothing meaningful left to catch —
+  // any real failure to restart is what reconcileOnBoot()'s health check on
+  // the next boot is for.
   setImmediate(() => {
     try {
-      execSync('pm2 restart beauty-hub-bot', { cwd: REPO_ROOT });
+      spawn('pm2', ['restart', 'beauty-hub-bot'], { cwd: REPO_ROOT, detached: true, stdio: 'ignore' }).unref();
     } catch (err) {
-      logger.error(`pm2 restart failed for item ${id}.`, err);
+      logger.error(`Failed to spawn pm2 restart for item ${id}.`, err);
     }
   });
 
