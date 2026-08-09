@@ -133,6 +133,27 @@ function hasClinicalSeverityKeyword(text) {
 const NORMAL_CONSULTATION_FALLBACK =
   'تمام، ده موضوع عادي جدًا وهساعدك فيه زي أي استشارة تانية 💛 لو حابة تضيفي أي تفاصيل زي روتين العناية الحالي أو الميزانية التقريبية، هقدر أرشحلك أنسب منتج من عندنا فورًا.';
 
+// 2026-08-09 fix: NORMAL_CONSULTATION_FALLBACK above gets saved into
+// session.llm.history (see pushHistory near the bottom of handleMessage), so
+// if the same downgrade fires again next turn, the model's own context now
+// contains itself having just said this exact sentence, plus whatever
+// concern language (real production case: anti-aging vocabulary — خطوط،
+// ترهلات، انتفاخ تحت العين — misread the same way plain "حبوب" used to be
+// before the 2026-07-18 acne hardening) originally tripped the false
+// SPECIALIST_REFERRAL/CUSTOMER_REQUEST/LONG_CONVERSATION_UNRESOLVED
+// assertion. That combination reliably reproduces the same misclassification
+// turn after turn — confirmed live, a customer who gave a full skin profile
+// and an explicit budget got this identical sentence 3 times in a row and
+// never converted. One benign redirect is a reasonable thing to send once;
+// sending the byte-identical redirect a second time means the redirect
+// itself isn't working, so this is a real signal a human should take over —
+// same reasoning as the existing MAX_UNCLEAR_CONFIRMATION_ATTEMPTS escalation
+// in agent.js's rules-engine path, applied here for the LLM path.
+const REPEATED_FALLBACK_LOOP_REASON = 'REPEATED_FALLBACK_LOOP';
+const REPEATED_FALLBACK_LOOP_REPLY =
+  'حاسة إن في لخبطة شوية في كلامنا 🌸 هبعتلك حد من فريقنا يتواصل معاكِ بسرعة عشان يساعدك صح.';
+const MAX_CONSECUTIVE_FALLBACK_DOWNGRADES = 1;
+
 // Canonical in-memory shape is the OpenAI chat format directly —
 // {role: 'user'|'assistant', content: string} — since OpenAI is now the
 // primary tier. localService.js/openaiService.js consume this as-is;
@@ -402,6 +423,27 @@ function applyValidatedOutput(session, output, candidates, text) {
     shownProductIds = [...new Set([...shownProductIds, ...mentionedIds])];
   }
 
+  // 2026-08-09 fix: a customer explicitly rejecting/correcting the currently
+  // pinned recommendation — confirmed live, "انا لم اسأل على اى منتجات
+  // لانفنتى" ("I never asked about any Infinity products") — used to leave
+  // recommendedProduct pointing at the rejected item anyway, since the block
+  // above only ever overwrites it on a NEW mentioned_product_ids and never
+  // clears it on a negative one. cartRecovery.js's automated nudges then
+  // kept re-pitching the exact product she'd just rejected, twice, with a
+  // "still holding this for you" framing. output.intent === 'REJECTION' is
+  // already part of the validated schema (the model already classifies
+  // rejection turns correctly) but was previously only used for a log note
+  // (see buildLogEntryAndNotification's default branch), never acted on.
+  // Only clears when the still-pinned product isn't re-mentioned THIS turn,
+  // so a customer rejecting a price or asking a follow-up about the same
+  // product doesn't wrongly unpin it — stage naturally falls back to
+  // AWAIT_CATEGORY below (see the stage computation further down) once
+  // recommendedProduct is null, reopening the conversation for a fresh,
+  // correct recommendation instead of staying stuck on the rejected one.
+  if (output.intent === 'REJECTION' && recommendedProduct && !mentionedIds.includes(recommendedProduct.id)) {
+    recommendedProduct = null;
+  }
+
   // Root cause of the 2026-08-02 triple-logging incident: order fields stay
   // present in session.orderData forever once collected, and the model keeps
   // asserting order_data.confirmed=true on later turns of the same closed
@@ -638,6 +680,27 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
           ...baseFields,
           orderStatus: 'Needs Specialist',
           notes: 'العميلة وصفت حالة جلدية تحتاج متابعة متخصصة - تم تحويلها لفريق Beauty Hub October',
+        },
+        adminNotification,
+      };
+    }
+
+    // 2026-08-09: the model asserted a handover downgrade (SPECIALIST_REFERRAL/
+    // CUSTOMER_REQUEST/LONG_CONVERSATION_UNRESOLVED) twice in a row for the
+    // same session — see REPEATED_FALLBACK_LOOP_REASON's comment near the top
+    // of this file. Deliberately its own branch rather than falling into the
+    // LONG_CONVERSATION_UNRESOLVED text below, which would misreport this as
+    // a message-count escalation when it's actually a stuck-loop one.
+    if (applied.handoverReason === REPEATED_FALLBACK_LOOP_REASON) {
+      const adminNotification =
+        `🔁 الوكيل الذكي حوّل المحادثة لفريق بشري (رد متكرر بدون تقدم مرتين على التوالي)\n` +
+        `رقم العميل: ${phone}\n` +
+        `آخر رسالة: ${text}`;
+      return {
+        logEntry: {
+          ...baseFields,
+          orderStatus: resolveEarlyStageOrderStatus(applied.orderData, applied.recommendedProduct),
+          notes: 'تم التحويل لفريق بشري بعد تكرار نفس الرد التلقائي مرتين متتاليتين بدون تقدم في المحادثة',
         },
         adminNotification,
       };
@@ -1151,7 +1214,25 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   // to history or returned to the customer, so the two are never
   // inconsistent (customer told "you need a specialist"/"talk to a human"
   // while everything else in the system treats it as routine).
-  if (applied.specialistReferralDowngraded || applied.customerRequestReplyDowngraded || applied.longConversationDowngraded) {
+  const isFallbackDowngrade =
+    applied.specialistReferralDowngraded || applied.customerRequestReplyDowngraded || applied.longConversationDowngraded;
+  // Loop guard (2026-08-09) — see REPEATED_FALLBACK_LOOP_REASON's comment
+  // above for why a second consecutive downgrade must not just repeat the
+  // same sentence again. Counts consecutive turns, resets the moment a turn
+  // doesn't downgrade.
+  const consecutiveFallbackDowngrades = isFallbackDowngrade ? (session.consecutiveFallbackDowngrades || 0) + 1 : 0;
+  const fallbackLoopDetected = consecutiveFallbackDowngrades > MAX_CONSECUTIVE_FALLBACK_DOWNGRADES;
+
+  if (fallbackLoopDetected) {
+    // Escalate for real instead of sending the identical redirect again —
+    // reuses the existing human-handoff machinery (24h cooldown, admin
+    // notification) exactly like a genuine SPECIALIST_REFERRAL/
+    // LONG_CONVERSATION_UNRESOLVED handover does.
+    validated.reply_text = REPEATED_FALLBACK_LOOP_REPLY;
+    applied.humanHandover = true;
+    applied.handoverReason = REPEATED_FALLBACK_LOOP_REASON;
+    applied.stage = STAGES.CLOSED;
+  } else if (isFallbackDowngrade) {
     validated.reply_text = NORMAL_CONSULTATION_FALLBACK;
   }
 
@@ -1189,6 +1270,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // comparison has the right running count (drives only the soft prompt
     // nudge now, never a forced handover — see where it's computed above).
     consecutiveRepeats,
+    // Drives the loop guard above — 0 whenever this turn wasn't itself a
+    // downgrade (so a single isolated redirect never counts against a later,
+    // unrelated one) and also reset to 0 once the loop guard has actually
+    // escalated, since the human handoff about to happen resolves it — no
+    // need to keep counting toward a second escalation on top of the first.
+    consecutiveFallbackDowngrades: fallbackLoopDetected ? 0 : consecutiveFallbackDowngrades,
     // One-shot: this reply is the proactive ad-landing greeting (if any was
     // pending), so it must not fire again on the customer's next ordinary
     // message. adLandingCampaignId itself is left alone — it's just a

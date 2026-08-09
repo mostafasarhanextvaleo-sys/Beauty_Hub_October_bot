@@ -7,8 +7,8 @@ const googleSheets = require('../services/googleSheets');
 const { sanitizePhoneNumber, truncate, normalizeArabic, sleep } = require('../utils/helpers');
 const chatLogger = require('../utils/chatLogger');
 const { runExclusive } = require('../utils/chatLock');
-const { getSession, getAllSessions, isHumanHandoffCooldownActive } = require('../bot/conversationMemory');
-const { getMediaNoCaptionReply, getMediaCaptionPrefix } = require('../bot/prompts');
+const { getSession, updateSession, getAllSessions, isHumanHandoffCooldownActive } = require('../bot/conversationMemory');
+const { getMediaNoCaptionReply, getMediaCaptionPrefix, MEDIA_ESCALATION_THRESHOLD } = require('../bot/prompts');
 const adminCommands = require('../bot/adminCommands');
 const adminAuth = require('../bot/adminAuth');
 const botControl = require('../bot/botControl');
@@ -626,11 +626,20 @@ function createClient() {
 
         // Pure media with no caption — nothing for the agent to act on. Reply
         // honestly (never go silent) and skip touching conversation state or
-        // Sheets, since nothing about the customer's need actually changed.
+        // Sheets, since nothing about the customer's need actually changed —
+        // except for the one small piece of state this now tracks (2026-08-09
+        // fix): consecutive unreadable-media sends in a row, so the reply can
+        // degrade (normal ack → catalog link → human handoff) instead of
+        // repeating the exact same sentence forever. Confirmed live as a real
+        // failure mode — see prompts.js's getMediaNoCaptionReply comment.
         if (isMedia && !caption) {
-          const reply = getMediaNoCaptionReply(message.type);
+          const mediaSession = getSession(message.from);
+          const consecutiveUnreadableMedia = (mediaSession.consecutiveUnreadableMedia || 0) + 1;
+          updateSession(message.from, { consecutiveUnreadableMedia });
+
+          const reply = getMediaNoCaptionReply(message.type, consecutiveUnreadableMedia);
           await client.sendMessage(message.from, reply);
-          logger.success(`Reply sent to ${phone} (media with no caption).`);
+          logger.success(`Reply sent to ${phone} (media with no caption, consecutive miss #${consecutiveUnreadableMedia}).`);
           chatLogger.logOutgoing({
             chatId: message.from,
             phone,
@@ -639,7 +648,30 @@ function createClient() {
             stage: stageBefore,
             latencyMs: Date.now() - receivedAt,
           });
+
+          if (consecutiveUnreadableMedia >= MEDIA_ESCALATION_THRESHOLD) {
+            // Same human-handoff cooldown mechanism a genuine LLM-driven
+            // handover uses (see conversationMemory.js's
+            // isHumanHandoffCooldownActive) — the bot goes quiet for this
+            // customer for 24h so a human has the conversation to themselves,
+            // and doesn't keep re-escalating on every further media send.
+            updateSession(message.from, { humanHandoffAt: Date.now(), consecutiveUnreadableMedia: 0 });
+            await notifyAdmin(
+              `📷 عميل بعت وسائط مش مقروءة ${consecutiveUnreadableMedia} مرات على التوالي — محتاج متابعة يدوية\n` +
+                `رقم العميل: ${phone}\n` +
+                `نوع آخر رسالة: ${message.type}`
+            );
+          }
           return;
+        }
+
+        // Any message that reaches the real agent (plain text, or media WITH
+        // a caption the agent can act on) means the customer got past the
+        // unreadable-media dead end, if they were ever in it — reset so a
+        // later, unrelated media send starts counting fresh instead of
+        // inheriting an old streak.
+        if (getSession(message.from).consecutiveUnreadableMedia) {
+          updateSession(message.from, { consecutiveUnreadableMedia: 0 });
         }
 
         const { reply, logEntry, adminNotification, orderHistoryEntry, variantId } = await agent.handleMessage({

@@ -1,3 +1,5 @@
+const { WEBSITE_URL } = require('./llmSystemPrompt');
+
 const STORE_NAME = 'Beauty Hub October';
 
 const MESSAGES = {
@@ -96,12 +98,41 @@ const MEDIA_ACKNOWLEDGMENTS = {
 
 const MEDIA_DESCRIBE_PROMPT = 'تقدري تكتبيلي طلبك أو توصفيلي المشكلة اللي عندك؟';
 
-function getMediaNoCaptionReply(messageType) {
-  const ack = MEDIA_ACKNOWLEDGMENTS[messageType];
-  if (ack) {
-    return `${ack}\n${MEDIA_DESCRIBE_PROMPT}`;
+// 2026-08-09 fix: this used to be the entire reply regardless of how many
+// times in a row a customer sent unreadable media — confirmed live, one
+// customer sent 7 photos + 2 videos in a single conversation and got this
+// exact sentence every single time, with no path forward. Now degrades
+// gracefully with the session's consecutive-miss count (see
+// whatsapp/client.js, which owns that counter): 1st miss gets the normal
+// ack+prompt below; 2nd gets a proactive offer of the self-browse catalog
+// link (WEBSITE_URL already exists for this exact need — see
+// llmSystemPrompt.js rule 12 — it just never surfaced here before); 3rd+
+// stops repeating anything and hands off to a human instead.
+const MEDIA_LINK_OFFER = `تقدري كمان تتصفحي كل المنتجات بالصور بنفسك من هنا وتقوليلي اسم اللي عجبك: ${WEBSITE_URL} 🌸`;
+
+const MEDIA_ESCALATION_REPLY =
+  'حاسة إنك محتاجة حد يشوف اللي بعتيه بنفسه 🌸 هبعتلك حد من فريقنا يتواصل معاكِ بسرعة.';
+
+// Shared with whatsapp/client.js (which owns the actual counter and decides
+// whether to also fire the admin notification / human-handoff cooldown) so
+// the two never drift out of sync on what "escalate" means.
+const MEDIA_ESCALATION_THRESHOLD = 3;
+
+function getMediaNoCaptionReply(messageType, consecutiveCount = 1) {
+  if (consecutiveCount >= MEDIA_ESCALATION_THRESHOLD) {
+    return MEDIA_ESCALATION_REPLY;
   }
-  return MESSAGES.fallback;
+
+  const ack = MEDIA_ACKNOWLEDGMENTS[messageType];
+  if (!ack) {
+    return MESSAGES.fallback;
+  }
+
+  if (consecutiveCount >= 2) {
+    return `${ack}\n${MEDIA_LINK_OFFER}`;
+  }
+
+  return `${ack}\n${MEDIA_DESCRIBE_PROMPT}`;
 }
 
 function getMediaCaptionPrefix(messageType) {
@@ -257,6 +288,7 @@ module.exports = {
   getGreeting,
   getMediaNoCaptionReply,
   getMediaCaptionPrefix,
+  MEDIA_ESCALATION_THRESHOLD,
   CATEGORY_KEYWORDS,
   SKIN_TYPE_KEYWORDS,
   HAIR_TYPE_KEYWORDS,

@@ -28,6 +28,7 @@ const emailAlert = require('../src/utils/emailAlert');
 const REPO_ROOT = path.join(__dirname, '..');
 const PENDING_CONFIRMATIONS_PATH = path.join(REPO_ROOT, 'pending_confirmations.json');
 const SESSIONS_STATE_PATH = path.join(REPO_ROOT, 'sessions_state.json');
+const CHAT_HISTORY_LOG_PATH = path.join(REPO_ROOT, 'chat_history.log');
 const PM2_ERROR_LOG_PATH = '/root/.pm2/logs/beauty-hub-bot-error.log';
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000; // first-ever run: look back 24h
 
@@ -79,6 +80,65 @@ function gatherSessionStats() {
   } catch (err) {
     return { total: 0, stageCounts: {}, preCheckout: 0, stale24: 0, stale72: 0, error: err.message };
   }
+}
+
+// 2026-08-09 addition — this join previously didn't exist anywhere despite
+// both halves already being logged (2026-08-09 audit finding: "nudge A/B
+// data is logged but never analyzed"). Deliberately ALL-TIME cumulative,
+// unlike the windowed since-last-report deltas above: a cart-recovery
+// conversion can lag its nudge by up to ~24-48h (cartNudgeSecondDelayHours),
+// so a short reporting window would badly undercount attribution, and both
+// source files are cheap to re-derive from scratch on every run.
+//
+// Attribution mirrors llmAgent.js's own recoveryNote logic exactly: a chat
+// that got a 2nd (shipping) nudge after an unanswered 1st (price) nudge has
+// the 2nd, more recent, more specific touch credited for any eventual
+// conversion — not both. nudge_generic (sent when a session went idle with
+// no recommendedProduct yet) is excluded — it has no A/B variant to compare.
+function gatherNudgeAttributionStats() {
+  let sessionsByChatId;
+  try {
+    sessionsByChatId = new Map(JSON.parse(fs.readFileSync(SESSIONS_STATE_PATH, 'utf-8')));
+  } catch (err) {
+    return { variants: {}, totalChatsNudged: 0, error: err.message };
+  }
+
+  if (!fs.existsSync(CHAT_HISTORY_LOG_PATH)) return { variants: {}, totalChatsNudged: 0 };
+
+  const creditedVariantByChatId = new Map(); // chatId -> { first: variantId, second: variantId }
+  const lines = fs.readFileSync(CHAT_HISTORY_LOG_PATH, 'utf-8').split('\n').filter(Boolean);
+  for (const line of lines) {
+    let rec;
+    try {
+      rec = JSON.parse(line);
+    } catch (err) {
+      continue; // a single malformed line must never abort the whole report
+    }
+    if (rec.dir !== 'OUT' || !rec.variantId) continue;
+    const stageKey = rec.variantId.startsWith('nudge1_') ? 'first' : rec.variantId.startsWith('nudge2_') ? 'second' : null;
+    if (!stageKey) continue;
+    const existing = creditedVariantByChatId.get(rec.chatId) || {};
+    existing[stageKey] = rec.variantId; // last one wins if a chat somehow got the same stage twice
+    creditedVariantByChatId.set(rec.chatId, existing);
+  }
+
+  const variants = {};
+  const bump = (variantId, key) => {
+    if (!variants[variantId]) variants[variantId] = { sent: 0, converted: 0 };
+    variants[variantId][key] += 1;
+  };
+
+  for (const [chatId, stages] of creditedVariantByChatId.entries()) {
+    const creditedVariant = stages.second || stages.first;
+    if (!creditedVariant) continue;
+    bump(creditedVariant, 'sent');
+    const session = sessionsByChatId.get(chatId);
+    if (session && session.orderPlaced) {
+      bump(creditedVariant, 'converted');
+    }
+  }
+
+  return { variants, totalChatsNudged: creditedVariantByChatId.size };
 }
 
 function gatherGitLog(windowStart) {
@@ -147,6 +207,21 @@ const JSON_SCHEMA = JSON.stringify({
 const AWAIT_CATEGORY_STAGE_NOTE =
   ' Note: with AGENT_MODE=llm live, session.stage="AWAIT_CATEGORY" is llmAgent.js\'s catch-all bucket for "no product recommended yet" (includes brand-new conversations), not literal category-selection blocking — do not raise an action item about a broken category flow from this count alone; the stale24/stale72 figures are the actual staleness signal.';
 
+// Shared between buildPrompt (LLM-facing) and formatEmailBody (human-facing)
+// so the two never drift into disagreeing about the same numbers.
+function formatNudgeAttributionForDisplay(nudgeAttribution) {
+  const variantIds = Object.keys(nudgeAttribution.variants || {});
+  if (variantIds.length === 0) return '(no cart-recovery nudges logged yet)';
+  return variantIds
+    .sort()
+    .map((id) => {
+      const { sent, converted } = nudgeAttribution.variants[id];
+      const rate = sent > 0 ? `${((converted / sent) * 100).toFixed(0)}%` : 'n/a';
+      return `${id}: ${converted}/${sent} converted (${rate})`;
+    })
+    .join('\n');
+}
+
 function buildPrompt(stats) {
   const stageNote = config.agentMode === 'llm' ? AWAIT_CATEGORY_STAGE_NOTE : '';
   return `You are producing a periodic health-check report for a production WhatsApp sales bot ("Sara" for Beauty Hub October, an Egyptian Arabic cosmetics store) — beauty-hub-october-bot, PM2-managed. This report is read by the store owner AND may become an actionable task for a separate coding agent, so keep actionItems concrete and specific, not vague advice.
@@ -157,6 +232,10 @@ PM2 error log: ${stats.pm2Errors.count} error lines logged. Sample (deduplicate 
 ${stats.pm2Errors.sample.join('\n') || '(none)'}
 
 Live session snapshot: ${stats.sessions.total} total sessions. Stage distribution: ${JSON.stringify(stats.sessions.stageCounts)}.${stageNote} Of ${stats.sessions.preCheckout} pre-checkout sessions, ${stats.sessions.stale24} are stale >24h and ${stats.sessions.stale72} are stale >72h.
+
+Cart-recovery nudge A/B attribution (ALL-TIME cumulative, not scoped to this reporting window — see gatherNudgeAttributionStats' comment for why): ${stats.nudgeAttribution.totalChatsNudged || 0} customers ever nudged. Conversion by variant (converted/sent):
+${formatNudgeAttributionForDisplay(stats.nudgeAttribution)}
+If one variant within the same nudge stage (nudge1_price_a vs. nudge1_price_b, or nudge2_shipping_a vs. nudge2_shipping_b) has a meaningfully lower conversion rate on a decent sample size, that's worth a concrete action item (e.g. retire the weaker wording). Do not raise this if sample sizes are too small to mean anything (single digits per variant).
 
 Git commits since last report: ${stats.gitLog.length ? stats.gitLog.join('\n') : '(none)'}
 
@@ -193,6 +272,8 @@ function formatEmailBody(stats, analysis) {
     `PM2 errors: ${stats.pm2Errors.count}`,
     `Sessions: ${stats.sessions.total} total, ${stats.sessions.preCheckout} pre-checkout (${stats.sessions.stale24} stale >24h, ${stats.sessions.stale72} stale >72h)`,
     `Stage distribution: ${JSON.stringify(stats.sessions.stageCounts)}`,
+    `Cart-recovery nudge attribution (all-time, ${stats.nudgeAttribution.totalChatsNudged || 0} customers nudged):`,
+    formatNudgeAttributionForDisplay(stats.nudgeAttribution),
     `Git commits: ${stats.gitLog.length}`,
     stats.gitLog.length ? stats.gitLog.join('\n') : '',
     `PM2 status: ${stats.pm2Status ? JSON.stringify(stats.pm2Status) : 'unavailable'}`,
@@ -218,6 +299,7 @@ async function main() {
     windowStart: windowStart.toISOString(),
     pm2Errors: gatherPm2ErrorStats(windowStart),
     sessions: gatherSessionStats(),
+    nudgeAttribution: gatherNudgeAttributionStats(),
     gitLog: gatherGitLog(windowStart),
     pm2Status: gatherPm2Status(),
   };
