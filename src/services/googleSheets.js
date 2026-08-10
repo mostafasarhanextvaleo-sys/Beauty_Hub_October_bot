@@ -129,6 +129,57 @@ const CONFIRMED_ORDERS_SHEET_NAME = 'Confirmed_Orders';
 // llmAgent.js once a customer replies with a recognizable 1-5 rating to the
 // automated delivery+rating-request message (see orderPipeline.js).
 const FEEDBACK_SHEET_NAME = 'Feedback';
+// 2026-08-10: a customer loyalty / lifetime-purchasing tracker —
+// orderPipeline.js's runOrderDeliveredCheck upserts one row per phone number
+// here every time one of that customer's orders reaches Order
+// Status=Delivered. Originally shipped as a full Confirmed_Orders row copy
+// (same day) but redesigned, before any real customer had ever been synced
+// into it, into this compact accumulating shape per the store owner's
+// explicit spec — see upsertTrustedClient/TRUSTED_CLIENTS_HEADERS.
+const TRUSTED_CLIENTS_SHEET_NAME = 'Trusted_Clients';
+// Order: Customer Name, Phone Number (upsert key), Address (always the
+// customer's latest delivered order's address), Total Lifetime Spent and
+// Points (both accumulate across every delivered order — 1 EGP spent = 1
+// point, per the store owner's explicit spec), Number of Purchases
+// (increments by 1 per delivered order). Deliberately NOT the same shape as
+// CONFIRMED_ORDERS_HEADERS (that was the original, since-replaced design) —
+// this tab answers "how much has this customer bought from us, ever?", not
+// "what did their most recent order look like?" (that's still
+// Confirmed_Orders' job).
+//
+// 2026-08-10, same day, 2nd addition: Last Order Date (the Confirmed_Orders
+// row's own order date, same value already stored in that tab's "Date"
+// column — not a separate "when it was marked Delivered" timestamp, which
+// this codebase has no reliable source for) and Customer Tier (auto-computed
+// from Number of Purchases — see computeCustomerTier — never staff-typed, so
+// it can never drift out of sync with the purchase count it's derived from).
+// Appended as trailing columns rather than inserted earlier so this stays a
+// pure column-ADDITION migration (see ensureTrustedClientsSchema) — safe to
+// apply even if real customer rows already exist under the 6-column shape.
+const TRUSTED_CLIENTS_HEADERS = [
+  'Customer Name',
+  'Phone Number',
+  'Address',
+  'Total Lifetime Spent',
+  'Points',
+  'Number of Purchases',
+  'Last Order Date',
+  'Customer Tier',
+];
+// 1 EGP of a delivered order's total (including shipping) = 1 loyalty point.
+// A named constant rather than a bare `1` multiply so a future "2x points
+// weekend" type promotion has one obvious place to change, per the store
+// owner's own phrasing ("1 EGP spent = 1 Point").
+const LOYALTY_POINTS_PER_EGP = 1;
+
+// Auto-computed from Number of Purchases, never staff-typed — see the header
+// note above TRUSTED_CLIENTS_HEADERS. Thresholds are the store owner's exact
+// spec: 1-2 -> Bronze, 3-5 -> Silver, 6+ -> VIP Gold.
+function computeCustomerTier(numberOfPurchases) {
+  if (numberOfPurchases >= 6) return 'VIP Gold 🥇';
+  if (numberOfPurchases >= 3) return 'Silver 🥈';
+  return 'Bronze 🥉';
+}
 
 // Chat ID (column B) is the real send target — WhatsApp addressing needs the
 // @lid/@c.us id, not the human-readable phone in column A, which can fail to
@@ -597,6 +648,9 @@ async function ensureCrmTabs() {
   if (!existingTitles.includes(FEEDBACK_SHEET_NAME)) {
     requests.push({ addSheet: { properties: { title: FEEDBACK_SHEET_NAME } } });
   }
+  if (!existingTitles.includes(TRUSTED_CLIENTS_SHEET_NAME)) {
+    requests.push({ addSheet: { properties: { title: TRUSTED_CLIENTS_SHEET_NAME } } });
+  }
   if (requests.length > 0) {
     await sheetsClient.spreadsheets.batchUpdate(
       { spreadsheetId: config.googleSheetId, requestBody: { requests } },
@@ -608,6 +662,7 @@ async function ensureCrmTabs() {
   await ensureHeaderRow(TARGETED_CLIENTS_SHEET_NAME, TARGETED_CLIENTS_HEADERS);
   await ensureHeaderRow(CONFIRMED_ORDERS_SHEET_NAME, CONFIRMED_ORDERS_HEADERS);
   await ensureHeaderRow(FEEDBACK_SHEET_NAME, FEEDBACK_HEADERS);
+  await ensureTrustedClientsSchema();
   await ensureOffersCampaignSeeded();
 }
 
@@ -945,6 +1000,217 @@ async function upsertTargetedClient(chatId, fields) {
       )
     );
   }
+}
+
+// --- Trusted_Clients (2026-08-10 loyalty-tracker redesign) ---
+
+// One-time (idempotent) header migration — see the long comment above
+// TRUSTED_CLIENTS_SHEET_NAME for why this can't just be another
+// ensureHeaderRow() call, which only ever GROWS a header and never
+// replaces/shrinks one (fine for a pure column addition, not enough on its
+// own for the original 11-column -> 6-column redesign this replaced, which
+// genuinely shrank the shape). Three cases, checked in order:
+//  1. Header already matches TRUSTED_CLIENTS_HEADERS exactly -> no-op.
+//  2. Header is a strict PREFIX of TRUSTED_CLIENTS_HEADERS (every existing
+//     column matches the current schema at the same position, just fewer
+//     trailing columns — e.g. the 2026-08-10 Last Order Date/Customer Tier
+//     addition) -> append only the missing trailing columns. Safe
+//     regardless of whether real data rows already exist, since no existing
+//     column is touched.
+//  3. Anything else (a genuinely different/incompatible old shape, e.g. the
+//     original 11-column full-row-copy design) -> only auto-rewrite the
+//     whole header if row 2 is confirmed empty (no real data under that old
+//     shape yet); otherwise log and back off rather than risk discarding
+//     rows — that scenario needs a real migration, not an auto-rewrite.
+async function ensureTrustedClientsSchema() {
+  if (!enabled) return;
+  try {
+    const headerRange = `${TRUSTED_CLIENTS_SHEET_NAME}!A1:Z1`;
+    const headerResult = await sheetsClient.spreadsheets.values.get(
+      { spreadsheetId: config.googleSheetId, range: headerRange },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    const existingHeader = (headerResult.data.values && headerResult.data.values[0]) || [];
+    const alreadyCurrent =
+      existingHeader.length === TRUSTED_CLIENTS_HEADERS.length && TRUSTED_CLIENTS_HEADERS.every((h, i) => existingHeader[i] === h);
+    if (alreadyCurrent) return;
+
+    const isPureAddition =
+      existingHeader.length > 0 &&
+      existingHeader.length < TRUSTED_CLIENTS_HEADERS.length &&
+      existingHeader.every((h, i) => TRUSTED_CLIENTS_HEADERS[i] === h);
+    if (isPureAddition) {
+      const newColumns = TRUSTED_CLIENTS_HEADERS.slice(existingHeader.length);
+      await sheetsClient.spreadsheets.values.update(
+        {
+          spreadsheetId: config.googleSheetId,
+          range: `${TRUSTED_CLIENTS_SHEET_NAME}!${columnLetter(existingHeader.length + 1)}1:${columnLetter(TRUSTED_CLIENTS_HEADERS.length)}1`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [newColumns] },
+        },
+        { timeout: REQUEST_TIMEOUT_MS }
+      );
+      logger.info(`"${TRUSTED_CLIENTS_SHEET_NAME}" header extended with: ${newColumns.join(', ')}.`);
+      return;
+    }
+
+    if (existingHeader.length > 0) {
+      const dataCheck = await sheetsClient.spreadsheets.values.get(
+        { spreadsheetId: config.googleSheetId, range: `${TRUSTED_CLIENTS_SHEET_NAME}!A2:A2` },
+        { timeout: REQUEST_TIMEOUT_MS }
+      );
+      if (dataCheck.data.values && dataCheck.data.values.length > 0) {
+        logger.error(
+          `"${TRUSTED_CLIENTS_SHEET_NAME}" has existing data under an incompatible header shape — refusing to auto-rewrite the header. Needs a manual migration.`
+        );
+        return;
+      }
+    }
+
+    // Clear the old header's full width first so no stale label (e.g. the
+    // old "Order Status"/"Invoice Link") is left dangling past the new
+    // schema's last column.
+    await sheetsClient.spreadsheets.values.clear(
+      { spreadsheetId: config.googleSheetId, range: headerRange },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    await sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${TRUSTED_CLIENTS_SHEET_NAME}!A1:${columnLetter(TRUSTED_CLIENTS_HEADERS.length)}1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [TRUSTED_CLIENTS_HEADERS] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    logger.info(`"${TRUSTED_CLIENTS_SHEET_NAME}" header set to the loyalty-tracker schema.`);
+  } catch (err) {
+    logger.error(`Could not verify/migrate "${TRUSTED_CLIENTS_SHEET_NAME}" header.`, err);
+  }
+}
+
+async function getTrustedClientsRows() {
+  if (!enabled) return [];
+  const range = `${TRUSTED_CLIENTS_SHEET_NAME}!A2:${columnLetter(TRUSTED_CLIENTS_HEADERS.length)}`;
+  const result = await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.get({ spreadsheetId: config.googleSheetId, range }, { timeout: REQUEST_TIMEOUT_MS })
+  );
+  const values = result.data.values || [];
+  return values.map((row, i) => ({
+    rowNumber: i + 2,
+    customerName: row[0] || '',
+    phone: row[1] || '',
+    address: row[2] || '',
+    totalLifetimeSpent: parseFloat(row[3]) || 0,
+    points: parseFloat(row[4]) || 0,
+    numberOfPurchases: parseInt(row[5], 10) || 0,
+    lastOrderDate: row[6] || '',
+    customerTier: row[7] || '',
+  }));
+}
+
+// Round to 2dp — accumulating floating-point EGP amounts across many orders
+// (e.g. repeated 0.1-style fractions) can otherwise drift into ugly
+// long-tail decimals in the Sheet.
+function round2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+// Records one delivered order's loyalty contribution — called from
+// orderPipeline.js's runOrderDeliveredCheck the first time a Confirmed_Orders
+// row is observed as Delivered. `orderTotal` must already be the
+// shipping-inclusive total for THIS order (the caller computes that; this
+// function only accumulates the number it's given — see orderPipeline.js
+// for why the shipping fee has to be computed there, not here).
+//
+// Upserts by Phone Number: a brand-new phone gets a new row seeded from this
+// one order (Number of Purchases=1, Total Lifetime Spent=Points=orderTotal).
+// A phone that already has a row is updated in place — never a second row —
+// with Number of Purchases +1, Total Lifetime Spent and Points both
+// increased by orderTotal (1 EGP = LOYALTY_POINTS_PER_EGP point), and
+// Address overwritten with this order's address (so the tab always reflects
+// the customer's most recently delivered-to address). Customer Name is only
+// overwritten when a non-empty one is supplied, so a blank name on some
+// later order can never blank out a name already on file. `orderDate`
+// (the Confirmed_Orders row's own order date) always overwrites Last Order
+// Date — by definition this call is always about the customer's newest
+// known order. Customer Tier is always recomputed from the fresh purchase
+// count (see computeCustomerTier) — never staff-typed, so it can't drift.
+async function upsertTrustedClient({ customerName, phone, address, orderTotal, orderDate }) {
+  if (!enabled || !phone) return null;
+
+  const existingRows = await getTrustedClientsRows();
+  const existing = existingRows.find((r) => r.phone === phone);
+  const addedAmount = Number.isFinite(orderTotal) ? orderTotal : 0;
+  const addedPoints = round2(addedAmount * LOYALTY_POINTS_PER_EGP);
+  const numberOfPurchases = (existing ? existing.numberOfPurchases : 0) + 1;
+
+  const merged = existing
+    ? {
+        customerName: customerName || existing.customerName,
+        phone,
+        address: address || existing.address,
+        totalLifetimeSpent: round2(existing.totalLifetimeSpent + addedAmount),
+        points: round2(existing.points + addedPoints),
+        numberOfPurchases,
+        lastOrderDate: orderDate || existing.lastOrderDate,
+        customerTier: computeCustomerTier(numberOfPurchases),
+      }
+    : {
+        customerName: customerName || '',
+        phone,
+        address: address || '',
+        totalLifetimeSpent: round2(addedAmount),
+        points: round2(addedPoints),
+        numberOfPurchases,
+        lastOrderDate: orderDate || '',
+        customerTier: computeCustomerTier(numberOfPurchases),
+      };
+
+  const values = sanitizeRowForSheet([
+    merged.customerName,
+    merged.phone,
+    merged.address,
+    merged.totalLifetimeSpent,
+    merged.points,
+    merged.numberOfPurchases,
+    merged.lastOrderDate,
+    merged.customerTier,
+  ]);
+
+  if (existing) {
+    await sheetsCall(() =>
+      sheetsClient.spreadsheets.values.update(
+        {
+          spreadsheetId: config.googleSheetId,
+          range: `${TRUSTED_CLIENTS_SHEET_NAME}!A${existing.rowNumber}:${columnLetter(TRUSTED_CLIENTS_HEADERS.length)}${existing.rowNumber}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [values] },
+        },
+        { timeout: REQUEST_TIMEOUT_MS }
+      )
+    );
+    logger.success(
+      `Trusted_Clients loyalty stats updated for ${phone} (row ${existing.rowNumber}): purchases=${merged.numberOfPurchases}, lifetimeSpent=${merged.totalLifetimeSpent}, points=${merged.points}, tier=${merged.customerTier}.`
+    );
+    return { rowNumber: existing.rowNumber, updated: true, ...merged };
+  }
+
+  const appendResult = await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.append(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${TRUSTED_CLIENTS_SHEET_NAME}!A:${columnLetter(TRUSTED_CLIENTS_HEADERS.length)}`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [values] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+  const newRowNumber = extractRowNumber(appendResult.data.updates && appendResult.data.updates.updatedRange);
+  logger.success(`Trusted_Clients row added for ${phone} (row ${newRowNumber}): purchases=1, lifetimeSpent=${merged.totalLifetimeSpent}, points=${merged.points}, tier=${merged.customerTier}.`);
+  return { rowNumber: newRowNumber, updated: false, ...merged };
 }
 
 // One-time visual polish (2026-07-30) — dropdowns + color-coded conditional
@@ -2149,4 +2415,9 @@ module.exports = {
   formatTargetedClientsTab,
   formatConfirmedOrdersTab,
   formatFeedbackTab,
+  TRUSTED_CLIENTS_SHEET_NAME,
+  TRUSTED_CLIENTS_HEADERS,
+  getTrustedClientsRows,
+  upsertTrustedClient,
+  computeCustomerTier,
 };

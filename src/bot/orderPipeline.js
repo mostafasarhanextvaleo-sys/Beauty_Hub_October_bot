@@ -4,6 +4,7 @@ const googleSheets = require('../services/googleSheets');
 const conversationMemory = require('./conversationMemory');
 const campaignWorker = require('./campaignWorker');
 const invoiceService = require('./invoiceService');
+const { matchShippingZone } = require('./shippingZones');
 const logger = require('../utils/logger');
 const { sleep } = require('../utils/helpers');
 
@@ -16,6 +17,28 @@ const { sleep } = require('../utils/helpers');
 // single source of truth for post-order delivery tracking, so a customer is
 // never double-messaged by two independent systems both reacting to
 // "delivered".
+//
+// 2026-08-10: runOrderDeliveredCheck also records the order into
+// Trusted_Clients (see googleSheets.upsertTrustedClient) the first time each
+// row is observed as Delivered — separate from the rating-request DM this
+// same check already sends. Trusted_Clients is a customer loyalty/lifetime-
+// purchasing tracker (Total Lifetime Spent + Points both accumulate across
+// every delivered order, Number of Purchases increments by 1 each time, Last
+// Order Date is overwritten with this order's date, and Customer Tier is
+// auto-recomputed from the fresh purchase count — see computeCustomerTier in
+// googleSheets.js), not a row-per-order log — see TRUSTED_CLIENTS_HEADERS.
+// Confirmed_Orders' own "Total Price" column is product-price-only (see
+// llmAgent.js's orderHistoryEntry.price), so the shipping fee is computed
+// here the same deterministic way invoiceGenerator.js already does for the
+// printable invoice — via shippingZones.matchShippingZone(address) — rather
+// than trusting an LLM-invented number, per this codebase's established
+// "code computes it, the model never invents it" rule for money fields.
+// Known limitation, inherited from invoiceGenerator.js's own identical
+// approach: a customer who was promised free shipping (cartRecovery.js's
+// FREE_SHIPPING_EXCEPTION) isn't tracked on the Confirmed_Orders row itself,
+// so their historical order's shipping still gets counted here — the same
+// gap already accepted for the invoice, not a new one introduced by this
+// feature.
 const SEND_INTERVAL_MS = 20 * 1000; // Send Invoice Action / Confirmation Status — cheap, eager, one-shot triggers
 const DELIVERED_INTERVAL_MS = 5 * 60 * 1000; // Order Status=Delivered — staff-edited, not time-critical (same cadence the retired deliveryFollowup.js used)
 const SEND_DELAY_MS = 4000; // pacing if several rows are due in the same poll — same reasoning as campaignWorker.js/deliveryFollowup.js
@@ -228,7 +251,12 @@ async function runOrderDeliveredCheck(sendMessageFn, resolvePhoneToChatIdFn) {
 
     if (row.orderStatus !== 'Delivered') {
       // Parity with the retired deliveryFollowup.js: reset so a future
-      // re-delivery/status-correction cycle can trigger again.
+      // re-delivery/status-correction cycle can trigger again. Deliberately
+      // does NOT reset trustedClientSynced below — once a customer has
+      // proven out a real delivered order they stay in Trusted_Clients even
+      // if staff later edits Order Status back (e.g. correcting a mistake),
+      // rather than silently dropping them from a trust list because of an
+      // unrelated status edit.
       if (prev.deliveredMessageSent) {
         prev.deliveredMessageSent = false;
         state.set(row.rowNumber, prev);
@@ -236,6 +264,43 @@ async function runOrderDeliveredCheck(sendMessageFn, resolvePhoneToChatIdFn) {
       }
       continue; // eslint-disable-line no-continue
     }
+
+    // Trusted_Clients loyalty sync — deliberately independent of the
+    // rating-request messaging below (own guard, no chatId/messaging-guard
+    // dependency), so a customer who's Blocked/Bot-Paused or has no
+    // resolvable WhatsApp chat still has this order counted toward their
+    // loyalty stats; only the "did it arrive, rate us" DM is gated on
+    // actually being able to message them. Guarded by trustedClientSynced so
+    // a row already counted (deliveredMessageSent flips back to false if
+    // staff un-marks Delivered, but this flag deliberately never does — see
+    // the comment above) is never double-counted into the accumulating
+    // totals even if this scan somehow ran twice for the same row.
+    if (!prev.trustedClientSynced) {
+      try {
+        // upsertTrustedClient rounds the accumulated totals itself — no need
+        // to round this per-order figure before handing it off.
+        const shippingZone = matchShippingZone(row.address);
+        const orderTotal = (parseFloat(row.totalPrice) || 0) + (shippingZone ? shippingZone.feeEGP : 0);
+        // eslint-disable-next-line no-await-in-loop
+        await googleSheets.upsertTrustedClient({
+          customerName: row.customerName,
+          phone: row.phone,
+          address: row.address,
+          orderTotal,
+          // The Confirmed_Orders row's own order date — same value already
+          // shown in that tab's "Date" column, not a separate "when it was
+          // marked Delivered" timestamp this codebase doesn't track anywhere.
+          orderDate: row.date,
+        });
+        prev.trustedClientSynced = true;
+      } catch (err) {
+        logger.error(`Trusted_Clients loyalty sync failed for row ${row.rowNumber} (${row.phone}). Will retry next scan.`, err);
+      } finally {
+        state.set(row.rowNumber, prev);
+        stateChanged = true;
+      }
+    }
+
     if (prev.deliveredMessageSent) continue; // eslint-disable-line no-continue
 
     const chatId = phoneToChatId.get(row.phone);
