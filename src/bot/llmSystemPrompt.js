@@ -1,15 +1,22 @@
 const { BUNDLE_DISCOUNT_PERCENT } = require('./routineBundles');
 const corrections = require('./corrections');
+const { SHIPPING_ZONES, matchShippingZone } = require('./shippingZones');
+const config = require('../config');
 
 const STORE_NAME = 'Beauty Hub October';
 // Store owner-provided catalog site (2026-07-30) — a SpreadSimple storefront
 // generated from the same Products Sheet the bot itself reads, so it's a
 // legitimate self-browse alternative, not a separate/divergent catalog.
 const WEBSITE_URL = 'https://950a7oh.spread.name/';
-// Real, confirmed store policy — extracted as a shared constant (2026-07-30)
-// so this can't drift out of sync between SHIPPING_POLICY's prompt text
-// below and invoiceGenerator.js's invoice PDFs, which quote the same figure.
-const FLAT_SHIPPING_FEE_EGP = 60;
+// The new public catalog page (2026-08-10, GET /catalog in index.js) — lists
+// every in-stock product with its real Product ID/SKU, the same id
+// productIdDetector.js/llmAgent.js's idMentionProduct resolves against.
+// Built from config.publicBaseUrl (same pattern invoiceService.js already
+// uses for the printable-invoice link) rather than hardcoded, so it tracks
+// PUBLIC_BASE_URL automatically if that ever changes. Empty when
+// PUBLIC_BASE_URL isn't set — rule 12 below omits the catalog line entirely
+// in that case rather than sharing a broken link.
+const CATALOG_URL = config.publicBaseUrl ? `${config.publicBaseUrl}/catalog` : '';
 
 // Shifted 2026-07-14 from "friendly seller" to "beauty advisor/friend" tone
 // (store owner's request) — rules 2/3 are new (advisor framing, routine
@@ -84,6 +91,7 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
     ج) لو قالت "خليني أفكر"، متسيبيهاش من غير هدف واضح — اسأليها بلطف لو في سؤال معين مترددة فيه (السعر؟ فعاليته؟ طريقة استخدامه؟) عشان تقدري تطمنيها فيه دلوقتي، بدل ما تسيبي الموضوع مفتوح بدون أي فولو-أب.
 7. الكلام العادي والمجاملات: لو العميل حيّاكي أو شكرك أو مدح المتجر ("السلام عليكم"، "شكراً"، "انتو احسن ناس")، ردي عليه بحرارة الأول قبل ما تسأليه محتاج مساعدة في إيه.
 8. الالتزام الصارم بالبيانات: معاكي قائمة منتجات مطابقة لرسالة العميل بس (مش الكتالوج كله). ممنوع نهائياً تخترعي منتج أو سعر مش موجود في القائمة دي، حتى لو بتقترحي روتين. لو السعر مش متاح، قولي "حد من فريق المتجر هيأكدلك السعر بالظبط قريب".
+8-ب. صور المنتجات (2026-08-09): معاكيش أي معلومة عن وجود أو عدم وجود صورة لأي منتج — القرار ده بيتاخد من نظام منفصل تماماً بيقرأ رابط الصورة الحقيقي من شيت المنتجات، مش من كلامك. ممنوع نهائياً تقولي جمل زي "الصورة مش متاحة"، "مفيش صورة للمنتج ده"، أو "هبعتلك الصورة أول ما تتوفر" — أي جملة من دي هتبقى كذب محتمل لأنك مش عارفة فعلاً. لو العميلة سألت عن صورة منتج أو ذكرت كلمة "صورة"، سيبي الرد عادي (جاوبي على أي جزء تاني من رسالتها، أو اسأليها توضيح لو محتاجة)، من غير ما تتكلمي عن الصورة نفسها خالص — النظام هيتعامل مع طلب الصورة تلقائيًا في رسالة منفصلة لو فعلاً طلبتها بوضوح.
 9. إتمام الطلب: لو العميل قال "احجز" أو أكد إنه عايز يطلب، اجمعي 3 حاجات: اسم العميل، العنوان بالتفصيل، ورقم تليفون بديل للمندوب (اسأليها بأسلوب زي "لو في رقم تاني بديل للمندوب عشان لو الرقم الأول مقفول؟"). اسأليها عن حاجة واحدة بس في كل رسالة — ممنوع تجمعي أكتر من سؤال في نفس الرد، حتى لو كل الحاجات لسه ناقصة. استني رد العميل على السؤال الحالي قبل ما تنتقلي للسؤال اللي بعده، وابدأي بس بالحاجة اللي لسه مش موجودة عندك (لو عندك الاسم بالفعل من كلامها قبل كده، متسأليش عنه تاني). متأكديش الطلب غير لما الثلاثة يكونوا موجودين.
 10. التحويل لموظف بشري (2026-08-04: قاعدة "zero-lock" — ممنوع نهائيًا التحويل أو التزام الصمت بسبب ارتباك بسيط، تهرب من سؤال، أو مجرد إحساسك إن الرد "مش واضح". فيه حالتين مسموح بيهم بس، ميتلخبطوش):
     أ) طلب صريح للتحدث مع إنسان: التعرف على الطلبات الصريحة دي (زي "خدمة العملاء"، "عايز أكلم بني آدم") بيتم تلقائيًا بواسطة النظام قبل ما الرسالة توصلك أصلاً — مفيش داعي تكتشفيها بنفسك خالص. لو وصلتلك رسالة عادية، يبقى العميلة *مطلبتش* حد بشري صراحة فيها. ممنوع نهائيًا تفعّلي human_handover=true أو handover_reason="CUSTOMER_REQUEST" بمجرد إحساسك إنها مرتبكة أو غاضبة أو مش واضحة — ده مش سبب كافي أبدًا. سيبي الحالة دي دايمًا human_handover=false وhandover_reason=null، وكمّلي تساعديها بشكل طبيعي وصبور بدل ما تحوّليها.
@@ -91,32 +99,44 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
     ج) محادثة طويلة جدًا تخطت الحد الأقصى — يظهر ليكي بس لو انقالك صراحة في تعليمات إضافية تحت إن عدد رسائل العميلة في المحادثة دي تخطى الحد المسموح: قيّمي السياق كله بجدية وموضوعية — هل العميلة لسه فعلاً محتاجة تتكلم مع إنسان حقيقي (شكوى واضحة ومش اتحلت، طلب معلق محتاج تدخل بشري فعلي)، ولا لسه ممكن تكمّلي مساعدتها عادي؟ لو مقتنعة إنك لسه قادرة تساعديها، كمّلي عادي من غير أي تحويل — طول المحادثة لوحده مش سبب كافي. لو فعلاً مقتنعة إنها محتاجة إنسان، فعّلي human_handover=true وhandover_reason="LONG_CONVERSATION_UNRESOLVED"، وقوليلها الجملة دي بالظبط من غير أي تغيير: "المحادثة استمرت لفترة طويلة، حابين نتأكد إننا بنساعدك بأفضل شكل ممكن — فريقنا هيتواصل معاكي مباشرة دلوقتي 🌸". لو مفيش تعليمات إضافية بخصوص طول المحادثة، يبقى الحالة دي مش مطروحة أصلاً — تجاهليها تمامًا.
     في أي حالة تانية ملهاش علاقة بتحويل لموظف بشري، سيبي human_handover=false وhandover_reason=null.
 11. الشفافية والإفصاح عن إنك مساعد ذكي: العميل له الحق يعرف إنه بيتكلم مع مساعد ذكي مش شخص حقيقي. في أول تحية أو تعريف بنفسك مع عميلة جديدة، عرّفي نفسك بشكل طبيعي وودود زي "أنا سارة، المساعد الذكي لـ Beauty Hub October" أو أي صياغة مشابهة. ولو العميل سأل صراحة "انتي بوت؟"، "انتي حقيقية؟"، أو أي سؤال شبيه، أكدي بصراحة ووضوح إنك مساعد ذكي من غير ما تنكري أو تتهربي من السؤال.
-12. رابط الموقع للتصفح الذاتي: لو العميلة سألت تحديدًا عن الموقع ("عندكم موقع؟")، أو طلبت تشوف الكتالوج/كل المنتجات كاملة، أو قالت حاجة زي "ابعتيلي لينك المنتجات" — شاركيها الرابط ده بثقة وبشكل طبيعي: ${WEBSITE_URL}. الرابط اختيار إضافي بيسهّل عليها تتصفح بنفسها، مش رد بديل عن مساعدتها — لو لسه بتسأل عن حاجة معينة أو محتاجة نصيحة، كمّلي معاها الاستشارة العادية زي أي رسالة تانية بعد ما تبعتيلها الرابط.`;
+12. روابط الموقع والكتالوج: لو العميلة سألت تحديدًا عن الموقع ("عندكم موقع؟")، أو طلبت تشوف الكتالوج/كل المنتجات كاملة، أو قالت حاجة زي "ابعتيلي لينك المنتجات" — ابعتيلها الرابطين مع بعض، كل واحد بعنوانه واضح، بالمعنى ده: "تفضلي يا فندم:
+🌐 رابط الموقع: ${WEBSITE_URL}
+🛍️ رابط الكتالوج لتصفح المنتجات: ${CATALOG_URL}"${CATALOG_URL ? '' : ' (رابط الكتالوج مش متاح دلوقتي، ابعتي رابط الموقع بس)'}
+الرابطين دول اختيار إضافي بيسهّل عليها تتصفح بنفسها، مش رد بديل عن مساعدتها — لو لسه بتسأل عن حاجة معينة أو محتاجة نصيحة، كمّلي معاها الاستشارة العادية زي أي رسالة تانية بعد ما تبعتيلها الرابطين. لو بعد كده بعتتلك "كود المنتج" اللي شافته في صفحة الكتالوج، ده رقم حقيقي من قائمة المنتجات — استخدميه عادي زي أي إشارة تانية لمنتج بعينه.`;
 
 // Real, confirmed store policy (owner-provided, 2026-07-16) — not a
 // per-conversation "correction" inferred by the evaluator, so it lives here
 // as ground truth rather than in corrections.json. Kept as its own labeled
 // section (not folded into SARA_PERSONA's numbered rules) so it reads as
-// non-negotiable fact rather than a stylistic guideline. The closing line is
-// load-bearing: without it, the model tends to tag the flat 60-EGP fee as
-// price_quoted when it mentions it in reply_text, and validateModelOutput in
-// llmAgent.js discards the whole reply because 60 doesn't match any
-// candidate product's price (see also the price_quoted schema note below).
+// non-negotiable fact rather than a stylistic guideline.
+//
+// 2026-08-09 — nationwide expansion (store owner directive, replacing the
+// October-only flat-fee policy). This table is INFORMATIONAL/reference only
+// — the model must never compute or quote a specific customer's exact fee
+// from it directly. The real, grounded fee for the customer's actual address
+// (once known) is injected separately by buildShippingZoneSection below,
+// same "deterministic code computes it, the model only relays it" pattern
+// already used for product prices/availability throughout this codebase
+// (rule 8) — a shipping fee is exactly the kind of number the LLM must never
+// invent or hand-compute from a table. The closing line is load-bearing:
+// without it, the model tends to tag whatever shipping figure it mentions as
+// price_quoted, and validateModelOutput in llmAgent.js discards the whole
+// reply because it doesn't match any candidate product's price.
 const SHIPPING_POLICY = `سياسات الشحن والتوصيل — دي حقايق ثابتة عن المتجر، التزمي بيها بالنص ومتخترعيش أيام أو أسعار أو مناطق تانية غيرها:
 - أيام الشحن: الشحن بيتم بس يومي الجمعة والسبت.
-- تكلفة الشحن: سعر ثابت ${FLAT_SHIPPING_FEE_EGP} جنيه على كل الطلبات.
-- نطاق التغطية: التوصيل متاح جوه مدينة أكتوبر بس، ومش شامل باقي المحافظات أو المناطق التانية. لو العميل بيسأل عن التوصيل لمنطقة برا أكتوبر، اعتذري بلطف ووضحيله إن التغطية حالياً مقتصرة على أكتوبر بس.
-ملحوظة مهمة: لو ذكرتي الـ${FLAT_SHIPPING_FEE_EGP} جنيه دي في ردك، متحطيهاش في حقل price_quoted ولا routine_bundle_price_quoted — الحقلين دول لسعر المنتج بس، مش لمصاريف الشحن.`;
+- نطاق التغطية: التوصيل متاح دلوقتي لكل محافظات مصر — ممنوع نهائياً تعتذري عن أي منطقة أو تقوليلها إن التوصيل مش متاح عندها، مهما كانت المنطقة بعيدة.
+- تكلفة الشحن بتختلف حسب المحافظة/المنطقة (جدول مرجعي بس، ملهوش علاقة برد فعلي لعميلة معينة):
+${SHIPPING_ZONES.map((z) => `  - ${z.name}: ${z.feeEGP} جنيه`).join('\n')}
+ملحوظة حرجة جداً: ممنوع نهائياً تحسبي أو تخمّني تكلفة الشحن الفعلية لعميلة بنفسك من الجدول فوق، حتى لو حسّيتي واثقة من المنطقة. لو عنوان العميلة معروف، هتلاقي التكلفة الدقيقة والمحسوبة جاهزة ليكي في قسم منفصل تحت (لو موجود) — استخدمي الرقم ده بالظبط وبس. لو مفيش قسم زي ده لسه (يعني العنوان لسه مش معروف أو مش واضح بالظبط)، قوليلها إن التكلفة بتتحدد حسب منطقتها وهتتأكد بالظبط بعد ما تدّيكي عنوانها بالتفصيل — وممنوع تقوليلها رقم من عندك.
+ملحوظة تانية: لو ذكرتي أي رقم لمصاريف الشحن في ردك، متحطيهوش في حقل price_quoted ولا routine_bundle_price_quoted — الحقلين دول لسعر المنتج بس، مش لمصاريف الشحن.`;
 
-// Only appended when the session actually received cartRecovery.js's second
-// nudge (session.secondNudgeSentAt — see llmAgent.js's buildSystemPrompt
-// call), which is the one that promises real, staff-honored free shipping
-// (see cartRecovery.js's SECOND_NUDGE_WITH_PRICE comment). Without this,
-// Sara had no way to know that specific promise existed and would flatly
-// contradict it with the flat-fee policy above — this is the fix for that.
-// Placed AFTER SHIPPING_POLICY in the prompt so it reads as the override it
-// is, same instruction-order pattern used for corrections vs. the persona.
-const FREE_SHIPPING_EXCEPTION = `استثناء لسياسة الشحن الثابتة فوق — العميلة دي سبق وبعتنالها رسالة وعدناها فيها بتوصيل مجاني كهدية لو أكدت الأوردر. لو سألت عن مصاريف الشحن، متقوليلهاش إن الشحن بـ${FLAT_SHIPPING_FEE_EGP} جنيه — أكدي لها بثقة ووضوح إن التوصيل هيبقى مجاني ليها زي ما اتفقنا، من غير ما تدفع مصاريف شحن خالص.`;
+// 2026-08-09 policy change: this file used to also export a
+// FREE_SHIPPING_EXCEPTION section, appended whenever a session had received
+// cartRecovery.js's second nudge, that overrode SHIPPING_POLICY above with a
+// "tell her it's free" instruction. Removed store-wide, along with the
+// nudge's own free-shipping promise — every order now always shows the real
+// computed regional fee from SHIPPING_POLICY/buildShippingZoneSection, no
+// exceptions.
 
 // Real, confirmed store policy (owner-provided, 2026-07-16, "Flexible &
 // Trust-Building" option) — same ground-truth status as SHIPPING_POLICY
@@ -159,14 +179,19 @@ function buildActiveOffersSection(activeOffers) {
 ${blocks}`;
 }
 
-// Only appended when llmAgent.js's deterministic classifier (see
-// deliveryFeedbackDetector.js) couldn't confidently read the customer's
-// reply to the automated "did it arrive ok?" message as clearly
-// positive/negative — a clear reply is handled entirely in code and never
-// reaches this prompt at all, specifically so a Sheet status change (to
-// Completed or Issue) never depends on the LLM's judgment. This note only
-// covers the genuinely ambiguous remainder.
-const AWAITING_DELIVERY_FEEDBACK_NOTE = `العميلة دي اتبعتلها رسالة بتسأل عن حالة أوردرها بعد التوصيل، وردها الأخير مكانش واضح إنه تأكيد استلام ولا فيه مشكلة. اسأليها سؤال قصير ومباشر يوضح الصورة (استلمتي الأوردر ولا لسه؟ وهو كويس ولا فيه أي مشكلة؟) قبل ما تكملي في أي حاجة تانية. ممنوع تفترضي إن الأوردر اتسلم بنجاح أو فيه مشكلة من غير ما تتأكدي — القرار ده بياخده فريقنا مش انتِ.`;
+// 2026-08-09 order-management pipeline — only appended when
+// orderConfirmationReplyDetector.js couldn't confidently read the
+// customer's reply to the automated order-confirmation-request message as a
+// clear تأكيد/تمام/confirm — a clear match is handled entirely in code
+// (orderPipeline.js + llmAgent.js) and never reaches this prompt at all, so
+// the Confirmation Status Sheet column never depends on the LLM's judgment.
+const AWAITING_ORDER_CONFIRMATION_NOTE = `العميلة دي اتبعتلها رسالة بتفاصيل طلبها وفاتورته، وطلب منها تأكيد الأوردر بالرد بكلمة "تأكيد" أو "تمام"، وردها الأخير مكانش تأكيد واضح. لو لسه مش واضح إنها أكدت، ذكّريها بلطف إنها تقدر تأكد الأوردر بكلمة "تأكيد" أو "تمام" قبل ما تكملي في أي حاجة تانية. ممنوع تفترضي إن الأوردر اتأكد من غير ما تتأكدي.`;
+
+// Same pattern — only appended when feedbackRatingDetector.js couldn't find
+// a recognizable 1-5 rating in the customer's reply to the automated
+// delivery+rating-request message. A recognized rating is saved to the
+// Feedback sheet entirely in code and never reaches this prompt.
+const AWAITING_FEEDBACK_RATING_NOTE = `العميلة دي اتبعتلها رسالة بتسأل عن تجربتها مع طلبها بعد التوصيل، وطلب منها تقيّم من 1 لـ5، وردها الأخير مفهوش رقم تقييم واضح. اسأليها بلطف تديكي رقم من 1 لـ5 قبل ما تكملي في أي حاجة تانية، وممنوع تخترعي تقييم من عندك.`;
 
 // Injected whenever session.websiteOrder is set (see websiteOrderDetector.js
 // — a recognized SpreadSimple checkout message from WEBSITE_URL, logged to
@@ -211,6 +236,24 @@ function buildAdLandingSection(adLanding) {
 // exactly what counts as still needing a human here. llmAgent.js's
 // applyValidatedOutput independently re-verifies eligibility (the actual
 // message count) before ever trusting whatever the model decides.
+// 2026-08-10 — customer referenced a catalog Product ID/SKU directly (e.g.
+// from the new public catalog page, or a code a staff member read out to
+// them). productIdDetector.js/productMatcher.js's findByIdCandidate already
+// resolved it to a real, in-stock product (llmAgent.js) before this prompt
+// is built — never a guess — and it's guaranteed to already be in the
+// candidates list below via selectCandidatesForTurn's sticky handling. This
+// section just tells Sara WHY that particular candidate matters this turn:
+// an explicit ID is a confirmed selection, not a hint to explore — state its
+// real name and price directly and move toward confirming the order, rather
+// than running the full multi-step consultation as if she didn't already
+// know exactly which product the customer meant.
+function buildIdMentionSection(idMention) {
+  if (!idMention || !idMention.product) return '';
+  return `
+
+العميلة ذكرت كود/رقم منتج (${idMention.product.id}) بشكل مباشر ودا معناه إنها بتقصد المنتج ده بالظبط: ${idMention.product.name}، السعر الحقيقي: ${formatPrice(idMention.product)}. أكدي عليها اسم المنتج وسعره الحقيقي في ردك مباشرة (من غير ما تسأليها أسئلة استشارة عامة زي نوع بشرتها الأول، لأنها حددت المنتج بنفسها فعلاً)، واسأليها لو حابة تكملي بيانات الطلب.`;
+}
+
 function buildLongConversationSection(longConversationPending) {
   if (!longConversationPending) return '';
   return `
@@ -247,6 +290,30 @@ function buildCustomerProfileSection(customerProfile) {
 ${lines}${feedbackNote}`;
 }
 
+// 2026-08-09 — the grounded, deterministic counterpart to SHIPPING_POLICY's
+// reference table above. shippingZone: { name, feeEGP } from
+// shippingZones.js's matchShippingZone(session.orderData.deliveryAddress),
+// computed in llmAgent.js — null when no address is known yet, OR when an
+// address IS known but didn't confidently match any zone (never guessed;
+// see matchShippingZone's own comment on why null must always mean "ask the
+// team", not "assume a default"). addressKnown distinguishes those two null
+// cases so the model gets the right instruction either way: ask for the
+// address at all, vs. tell this specific customer the team will confirm her
+// specific area's fee.
+function buildShippingZoneSection(shippingZone, addressKnown) {
+  if (shippingZone) {
+    return `
+
+بيانات شحن محسوبة فعلياً لعنوان العميلة الحالي (استخدمي الرقم ده بالظبط لو ذكرتي تكلفة الشحن، ومتحسبيش رقم تاني): منطقة "${shippingZone.name}"، تكلفة الشحن ${shippingZone.feeEGP} جنيه.`;
+  }
+  if (addressKnown) {
+    return `
+
+عنوان العميلة معروف بس النظام مقدرش يحدد منطقة الشحن بالظبط منه. لو سألت عن تكلفة الشحن، قوليلها إن فريق المتجر هيتأكدلها من تكلفة التوصيل بالظبط لمنطقتها قريب — وممنوع تقوليلها رقم من عندك أو من الجدول المرجعي فوق.`;
+  }
+  return '';
+}
+
 function serializeCandidates(products) {
   if (!products || products.length === 0) {
     return 'لا توجد منتجات مطابقة لرسالة العميل حالياً في الكتالوج.';
@@ -274,15 +341,18 @@ const REPEATED_MESSAGE_NOTE = `العميلة كررت نفس رسالتها ا�
 function buildSystemPrompt(
   candidates,
   bundleComplement,
-  freeShippingPromised,
   customerProfile,
-  awaitingDeliveryFeedback,
+  awaitingOrderConfirmationReply,
+  awaitingFeedbackRating,
   websiteOrder,
   activeOffers,
   repeatedMessageNote,
   adLanding,
-  longConversationPending
+  longConversationPending,
+  deliveryAddress,
+  idMention
 ) {
+  const shippingZoneSection = buildShippingZoneSection(matchShippingZone(deliveryAddress), Boolean(deliveryAddress));
   const bundleSection = bundleComplement
     ? `
 
@@ -290,8 +360,6 @@ function buildSystemPrompt(
 - id:${bundleComplement.id} | ${bundleComplement.name} | السعر:${formatPrice(bundleComplement)}
 لو اقترحتيه في ردك (reply_text)، لازم برضه تحطي id:${bundleComplement.id} في حقل routine_bundle_suggested_id وسعره الحقيقي في routine_bundle_price_quoted — أي ذكر للمنتج ده في الرد لازم يترافق مع تعبئة الحقلين دول، من غير ما تحسبي أي رقم نهائي مخصوم بنفسك. قوليلها إن في خصم ${BUNDLE_DISCOUNT_PERCENT}% على الاتنين مع بعض كروتين متكامل لو حجزتهم سوا — احسبي السعر النهائي المخصوم سيبيه لفريق المتجر وقت تأكيد الطلب.`
     : '';
-
-  const freeShippingSection = freeShippingPromised ? `\n\n${FREE_SHIPPING_EXCEPTION}` : '';
 
   // Corrections are admin-approved rules — either from a human directly, or
   // (historically, before the chat-evaluator daemon was retired 2026-07-16)
@@ -312,17 +380,19 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
 
   const offersSection = buildActiveOffersSection(activeOffers);
   const customerProfileSection = buildCustomerProfileSection(customerProfile);
-  const deliveryFeedbackSection = awaitingDeliveryFeedback ? `\n\n${AWAITING_DELIVERY_FEEDBACK_NOTE}` : '';
+  const orderConfirmationSection = awaitingOrderConfirmationReply ? `\n\n${AWAITING_ORDER_CONFIRMATION_NOTE}` : '';
+  const feedbackRatingSection = awaitingFeedbackRating ? `\n\n${AWAITING_FEEDBACK_RATING_NOTE}` : '';
   const websiteOrderSection = buildWebsiteOrderSection(websiteOrder);
   const repeatedMessageSection = repeatedMessageNote ? `\n\n${REPEATED_MESSAGE_NOTE}` : '';
   const adLandingSection = buildAdLandingSection(adLanding);
   const longConversationSection = buildLongConversationSection(longConversationPending);
+  const idMentionSection = buildIdMentionSection(idMention);
 
   // Prompt-caching layout (2026-07-27): everything up through correctionsSection
   // is byte-identical across every call — same customer or not, same turn or
   // not — except when an admin approves/revokes a correction. Keeping it as one
-  // uninterrupted prefix, with every per-turn/per-customer variable (free
-  // shipping, customer profile, delivery-feedback note, candidates, bundle) only
+  // uninterrupted prefix, with every per-turn/per-customer variable (customer
+  // profile, order-confirmation/feedback-rating notes, candidates, bundle) only
   // appended AFTER it, lets OpenAI's automatic prefix caching actually hit on
   // this prefix for gpt-4o-mini. Previously correctionsSection was appended at
   // the very end, after the volatile candidates block, which broke the cache
@@ -336,7 +406,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
 
 ${SHIPPING_POLICY}
 
-${RETURN_POLICY}${correctionsSection}${offersSection}${freeShippingSection}${customerProfileSection}${deliveryFeedbackSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}${longConversationSection}
+${RETURN_POLICY}${correctionsSection}${offersSection}${customerProfileSection}${shippingZoneSection}${orderConfirmationSection}${feedbackRatingSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}${longConversationSection}${idMentionSection}
 
 منتجات مطابقة لرسالة العميل الحالية — استخدمي فقط من هذه القائمة، وممنوع نهائياً اختراع منتج أو سعر مش موجود هنا:
 ${serializeCandidates(candidates)}${bundleSection}
@@ -425,4 +495,4 @@ const RESPONSE_SCHEMA = {
   additionalProperties: false,
 };
 
-module.exports = { STORE_NAME, WEBSITE_URL, FLAT_SHIPPING_FEE_EGP, buildSystemPrompt, serializeCandidates, RESPONSE_SCHEMA };
+module.exports = { STORE_NAME, WEBSITE_URL, buildSystemPrompt, serializeCandidates, RESPONSE_SCHEMA };

@@ -72,7 +72,8 @@ const FOOT_PRODUCT = { id: 'B1', name: 'مبرد قدم تجريبي', price: '1
       HUMAN_HANDOFF_COOLDOWN_MS: 86400000,
       isHumanHandoffCooldownActive() { return false; },
       DELIVERY_FEEDBACK_WINDOW_MS: 172800000,
-      isDeliveryFeedbackExpired() { return false; },
+      isOrderConfirmationReplyExpired() { return false; },
+      isFeedbackRatingExpired() { return false; },
     };
     require.cache[conversationMemoryPath] = { id: conversationMemoryPath, filename: conversationMemoryPath, loaded: true, exports: conversationMemoryStub };
 

@@ -124,6 +124,11 @@ const ORDER_HISTORY_HEADERS = ['Date', 'Customer Name', 'Phone', 'Product Name',
 const TARGETED_CLIENTS_SHEET_NAME = 'Targeted_Clients';
 const OFFERS_CAMPAIGN_SHEET_NAME = 'Offers_Campaign';
 const CONFIRMED_ORDERS_SHEET_NAME = 'Confirmed_Orders';
+// 2026-08-09 order-management pipeline — one row per delivered order's
+// rating/comment, written by feedbackRatingDetector.js's handler in
+// llmAgent.js once a customer replies with a recognizable 1-5 rating to the
+// automated delivery+rating-request message (see orderPipeline.js).
+const FEEDBACK_SHEET_NAME = 'Feedback';
 
 // Chat ID (column B) is the real send target — WhatsApp addressing needs the
 // @lid/@c.us id, not the human-readable phone in column A, which can fail to
@@ -181,7 +186,44 @@ const CONFIRMED_ORDERS_HEADERS = [
   'Total Price',
   'Invoice Link',
   'Print Invoice',
+  // --- 2026-08-09 order-management pipeline additions (see orderPipeline.js) ---
+  // Staff-triggered (re)send of the invoice link. Dropdown is ['Send
+  // Invoice', 'Sent', 'Resend'] — Sheets' ONE_OF_LIST validation always
+  // allows a blank cell regardless of the list, so a brand-new row (blank)
+  // still reads as "not sent yet". Staff picks 'Send Invoice' (or 'Resend'
+  // once it already reads 'Sent') to trigger orderPipeline.js; on a
+  // confirmed successful send it's written to 'Sent' (left as
+  // 'Send Invoice'/'Resend' on failure so the next poll retries it) — see
+  // markInvoiceSent, which also flips the adjacent Confirmation Status to
+  // 'Pending' unless it's already resolved (see below).
+  'Send Invoice Action',
+  // Defaults to 'Hold' on every NEW row (initializeOrderPipelineColumns) —
+  // never backfilled onto pre-existing rows. orderPipeline.js sends a
+  // confirm-your-order+invoice-link message once per Hold row, then flips
+  // the row itself to 'Pending' (awaiting the customer's reply — see
+  // runOrderConfirmationRequestCheck) so the Sheet, not just the local
+  // order_pipeline_state.json, shows staff which rows have already been
+  // asked. Also flipped Hold/blank -> 'Pending' whenever Send Invoice
+  // Action successfully sends/resends the invoice (markInvoiceSent) — that
+  // message carries the same "reply تأكيد" confirmation prompt in that case,
+  // so a customer replying to a manually (re)sent invoice is understood the
+  // same way. Never overwritten once it's 'Confirmed' or 'Rejected'. From
+  // Pending, orderConfirmationReplyDetector.js flips to 'Confirmed'
+  // (customer replies تأكيد/تمام/confirm) or 'Rejected' (customer replies
+  // رفض/لا/الغاء الطلب/etc — see llmAgent.js).
+  'Confirmation Status',
+  // Defaults to 'Processing' on every NEW row. Processing/In Transit are
+  // manual staff-only states with no automation. Delivered triggers
+  // orderPipeline.js's combined delivery-confirmation + rating-request
+  // message (see feedbackRatingDetector.js / the Feedback tab below) —
+  // replaces the old Leads-sheet "Order Status" -> deliveryFollowup.js
+  // flow, which is retired. Same header name as a column on the Leads
+  // sheet by unfortunate coincidence only — different sheet, different
+  // values, tracked independently.
+  'Order Status',
 ];
+
+const FEEDBACK_HEADERS = ['Date', 'Customer Name', 'Phone', 'Rating', 'Comments'];
 
 // A row-per-offer table (2026-08-02) — replaced the old single fixed-cell
 // control panel (one CAMPAIGN_STATUS/OFFER_TEXT/TEST_TRIGGER for the whole
@@ -222,7 +264,16 @@ const DATA_TABLE_MAX_ROWS = 1000;
 // the header row's own explicit dark styling below it), and auto-fit
 // columns. Column-specific formatting (dropdowns, currency, etc.) is added
 // by each tab's own function on top of this.
-function dataTableStyleRequests(sheetId, columnCount) {
+// hasExistingBanding (2026-08-09 fix, found re-running formatConfirmedOrdersTab
+// after adding new columns): the Sheets API rejects addBanding outright if a
+// banded range already covers the target range ("You cannot add alternating
+// background colors to a range that already has alternating background
+// colors") — this function's callers all document themselves as "safe to
+// re-run anytime", which was never actually true for banding specifically.
+// Callers pass this from the same spreadsheets.get() metadata fetch they
+// already do to find sheetId, so re-running never throws once a tab has been
+// formatted once before.
+function dataTableStyleRequests(sheetId, columnCount, hasExistingBanding = false) {
   const fullRange = { sheetId, startRowIndex: 0, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: 0, endColumnIndex: columnCount };
   const headerRange = { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columnCount };
   const dataRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: 0, endColumnIndex: columnCount };
@@ -256,17 +307,21 @@ function dataTableStyleRequests(sheetId, columnCount) {
         innerVertical: { style: 'SOLID', color: { red: 0.88, green: 0.88, blue: 0.88 } },
       },
     },
-    {
-      addBanding: {
-        bandedRange: {
-          range: dataRange,
-          rowProperties: {
-            firstBandColor: { red: 1, green: 1, blue: 1 },
-            secondBandColor: { red: 0.95, green: 0.96, blue: 0.98 },
+    ...(hasExistingBanding
+      ? []
+      : [
+          {
+            addBanding: {
+              bandedRange: {
+                range: dataRange,
+                rowProperties: {
+                  firstBandColor: { red: 1, green: 1, blue: 1 },
+                  secondBandColor: { red: 0.95, green: 0.96, blue: 0.98 },
+                },
+              },
+            },
           },
-        },
-      },
-    },
+        ]),
     { autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: columnCount } } },
   ];
 }
@@ -539,6 +594,9 @@ async function ensureCrmTabs() {
   if (!existingTitles.includes(CONFIRMED_ORDERS_SHEET_NAME)) {
     requests.push({ addSheet: { properties: { title: CONFIRMED_ORDERS_SHEET_NAME } } });
   }
+  if (!existingTitles.includes(FEEDBACK_SHEET_NAME)) {
+    requests.push({ addSheet: { properties: { title: FEEDBACK_SHEET_NAME } } });
+  }
   if (requests.length > 0) {
     await sheetsClient.spreadsheets.batchUpdate(
       { spreadsheetId: config.googleSheetId, requestBody: { requests } },
@@ -549,6 +607,7 @@ async function ensureCrmTabs() {
 
   await ensureHeaderRow(TARGETED_CLIENTS_SHEET_NAME, TARGETED_CLIENTS_HEADERS);
   await ensureHeaderRow(CONFIRMED_ORDERS_SHEET_NAME, CONFIRMED_ORDERS_HEADERS);
+  await ensureHeaderRow(FEEDBACK_SHEET_NAME, FEEDBACK_HEADERS);
   await ensureOffersCampaignSeeded();
 }
 
@@ -901,6 +960,7 @@ async function formatOffersCampaignTable() {
   const sheetMeta = (meta.data.sheets || []).find((s) => s.properties.title === OFFERS_CAMPAIGN_SHEET_NAME);
   if (!sheetMeta) throw new Error(`"${OFFERS_CAMPAIGN_SHEET_NAME}" tab not found — run ensureCrmTabs() first.`);
   const sheetId = sheetMeta.properties.sheetId;
+  const hasExistingBanding = Boolean(sheetMeta.bandedRanges && sheetMeta.bandedRanges.length > 0);
   const lastDataRow = OFFERS_CAMPAIGN_OFFER_COUNT + 1; // header + 5 offers = row 6
 
   // Normalize CAMPAIGN_STATUS/TEST_TRIGGER to the dropdowns' valid values
@@ -954,7 +1014,7 @@ async function formatOffersCampaignTable() {
   const gray = { red: 0.55, green: 0.55, blue: 0.55 };
 
   const requests = [
-    ...dataTableStyleRequests(sheetId, OFFERS_CAMPAIGN_HEADERS.length),
+    ...dataTableStyleRequests(sheetId, OFFERS_CAMPAIGN_HEADERS.length, hasExistingBanding),
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 90 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 140 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 2, endIndex: 3 }, properties: { pixelSize: 480 }, fields: 'pixelSize' } },
@@ -1017,6 +1077,7 @@ async function formatTargetedClientsTab() {
   const sheetMeta = (meta.data.sheets || []).find((s) => s.properties.title === TARGETED_CLIENTS_SHEET_NAME);
   if (!sheetMeta) throw new Error(`"${TARGETED_CLIENTS_SHEET_NAME}" tab not found — run ensureCrmTabs() first.`);
   const sheetId = sheetMeta.properties.sheetId;
+  const hasExistingBanding = Boolean(sheetMeta.bandedRanges && sheetMeta.bandedRanges.length > 0);
   const columnCount = TARGETED_CLIENTS_HEADERS.length;
   const statusColIndex = TARGETED_CLIENTS_HEADERS.indexOf('Campaign Status');
   const statusRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: statusColIndex, endColumnIndex: statusColIndex + 1 };
@@ -1029,7 +1090,7 @@ async function formatTargetedClientsTab() {
   const timestampEndIndex = TARGETED_CLIENTS_HEADERS.indexOf('Offer Sent') + 1;
 
   const requests = [
-    ...dataTableStyleRequests(sheetId, columnCount),
+    ...dataTableStyleRequests(sheetId, columnCount, hasExistingBanding),
     {
       setDataValidation: {
         range: statusRange,
@@ -1103,15 +1164,50 @@ async function formatConfirmedOrdersTab() {
   const sheetMeta = (meta.data.sheets || []).find((s) => s.properties.title === CONFIRMED_ORDERS_SHEET_NAME);
   if (!sheetMeta) throw new Error(`"${CONFIRMED_ORDERS_SHEET_NAME}" tab not found — run ensureCrmTabs() first.`);
   const sheetId = sheetMeta.properties.sheetId;
+  const hasExistingBanding = Boolean(sheetMeta.bandedRanges && sheetMeta.bandedRanges.length > 0);
   const columnCount = CONFIRMED_ORDERS_HEADERS.length;
   const dateColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Date');
   const phoneColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Phone');
   const priceColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Total Price');
   const invoiceColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Invoice Link');
   const printColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Print Invoice');
+  const sendInvoiceColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Send Invoice Action');
+  const confirmationColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Confirmation Status');
+  const orderStatusColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Order Status');
+
+  // Same setDataValidation/ONE_OF_LIST + TEXT_EQ conditional-color pattern
+  // already used for Offers_Campaign's CAMPAIGN_STATUS/TEST_TRIGGER and
+  // Targeted_Clients' Campaign Status (see formatOffersCampaignTable above).
+  const dropdown = (range, values) => ({
+    setDataValidation: {
+      range,
+      rule: { condition: { type: 'ONE_OF_LIST', values: values.map((v) => ({ userEnteredValue: v })) }, showCustomUi: true, strict: true },
+    },
+  });
+  const colorRule = (range, textValue, bg, index) => ({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [range],
+        booleanRule: {
+          condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: textValue }] },
+          format: { backgroundColor: bg, textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true } },
+        },
+      },
+      index,
+    },
+  });
+  const sendInvoiceRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: sendInvoiceColIndex, endColumnIndex: sendInvoiceColIndex + 1 };
+  const confirmationRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: confirmationColIndex, endColumnIndex: confirmationColIndex + 1 };
+  const orderStatusRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: orderStatusColIndex, endColumnIndex: orderStatusColIndex + 1 };
+  const amber = { red: 0.95, green: 0.61, blue: 0.07 };
+  const green = { red: 0.2, green: 0.66, blue: 0.33 };
+  const gray = { red: 0.55, green: 0.55, blue: 0.55 };
+  const blue = { red: 0.26, green: 0.52, blue: 0.96 };
+  const cyan = { red: 0.05, green: 0.6, blue: 0.6 };
+  const red = { red: 0.83, green: 0.18, blue: 0.18 };
 
   const requests = [
-    ...dataTableStyleRequests(sheetId, columnCount),
+    ...dataTableStyleRequests(sheetId, columnCount, hasExistingBanding),
     {
       repeatCell: {
         range: { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: dateColIndex, endColumnIndex: dateColIndex + 1 },
@@ -1157,13 +1253,26 @@ async function formatConfirmedOrdersTab() {
         fields: 'userEnteredFormat(horizontalAlignment,textFormat)',
       },
     },
+    dropdown(sendInvoiceRange, ['Send Invoice', 'Sent', 'Resend']),
+    dropdown(confirmationRange, ['Hold', 'Pending', 'Confirmed', 'Rejected']),
+    dropdown(orderStatusRange, ['Processing', 'In Transit', 'Delivered']),
+    colorRule(sendInvoiceRange, 'Send Invoice', amber, 0),
+    colorRule(sendInvoiceRange, 'Resend', amber, 1),
+    colorRule(sendInvoiceRange, 'Sent', green, 2),
+    colorRule(confirmationRange, 'Hold', amber, 3),
+    colorRule(confirmationRange, 'Pending', blue, 4),
+    colorRule(confirmationRange, 'Confirmed', green, 5),
+    colorRule(confirmationRange, 'Rejected', red, 6),
+    colorRule(orderStatusRange, 'Processing', gray, 7),
+    colorRule(orderStatusRange, 'In Transit', blue, 8),
+    colorRule(orderStatusRange, 'Delivered', cyan, 9),
   ];
 
   await sheetsClient.spreadsheets.batchUpdate(
     { spreadsheetId: config.googleSheetId, requestBody: { requests } },
     { timeout: REQUEST_TIMEOUT_MS }
   );
-  logger.success(`Formatted "${CONFIRMED_ORDERS_SHEET_NAME}" (dark header, banding, auto-fit columns, currency formatting).`);
+  logger.success(`Formatted "${CONFIRMED_ORDERS_SHEET_NAME}" (dark header, banding, auto-fit columns, currency formatting, order-pipeline dropdowns + color coding).`);
 }
 
 // Returns { rowNumber } (or null if disabled) so a caller can later attach
@@ -1230,23 +1339,220 @@ async function appendConfirmedOrder({ customerName, phone, address, products, to
 // GET /invoice/:rowNumber URL (src/index.js) — the invoice is rendered
 // on-the-fly and printed straight from the browser (Ctrl+P), so there's
 // nothing else to link to (no Drive/PDF file, no separate "print" variant).
-async function attachInvoiceLinks(rowNumber, url) {
-  if (!enabled || !rowNumber || !url) return;
+// Returns true only when a write actually happened — callers that need to
+// know whether the link is real before, say, texting it to a customer
+// (orderPipeline.js/invoiceService.js) must not infer success just because
+// this didn't throw, since !enabled/!rowNumber all silently no-op.
+//
+// 2026-08-10 fix (real customer report — a "عرض الفاتورة" click opened the
+// wrong customer's invoice, or 404'd): the row number used to be baked into
+// the URL as a plain number at write time. Any later insertion/deletion of
+// an EARLIER row (e.g. removing a stray duplicate — see the 2026-08-09
+// Confirmed_Orders history) shifts every row below it, but a HYPERLINK's URL
+// text never updates itself — it just silently starts pointing at whatever
+// row now happens to sit at that old number. Root-caused live: 3 real rows
+// (Hala/Sara/Souad) still carried stale numbers from an earlier shift,
+// pointing one row too high; Souad's had drifted to a row that no longer
+// existed at all (404). Fixed by using Sheets' own ROW() function inside the
+// formula instead of a hardcoded number, so the URL recomputes itself from
+// wherever this specific row physically is, every time it's opened —
+// immune to any future row insertion/deletion elsewhere in the tab.
+async function attachInvoiceLinks(rowNumber) {
+  if (!enabled || !rowNumber || !config.publicBaseUrl) return false;
   const invoiceColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Invoice Link');
   const printColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Print Invoice');
   const startCol = columnLetter(invoiceColIndex + 1);
   const endCol = columnLetter(printColIndex + 1);
+  // Sheets formula string concatenation (&) with ROW() — evaluated fresh by
+  // Sheets on every open, not computed once in JS and frozen into text.
+  const dynamicUrlExpr = `"${config.publicBaseUrl}/invoice/"&ROW()&"?token=${config.invoiceViewToken}"`;
   await sheetsCall(() =>
     sheetsClient.spreadsheets.values.update(
       {
         spreadsheetId: config.googleSheetId,
         range: `${CONFIRMED_ORDERS_SHEET_NAME}!${startCol}${rowNumber}:${endCol}${rowNumber}`,
         valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [[`=HYPERLINK("${url}","🧾 عرض الفاتورة")`, `=HYPERLINK("${url}","🖨️ طباعة")`]] },
+        requestBody: { values: [[`=HYPERLINK(${dynamicUrlExpr},"🧾 عرض الفاتورة")`, `=HYPERLINK(${dynamicUrlExpr},"🖨️ طباعة")`]] },
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
   );
+  return true;
+}
+
+// Writes the order-pipeline columns' (I:K) defaults onto a brand-new
+// Confirmed_Orders row — see orderPipeline.js. Called once, right after
+// appendConfirmedOrder succeeds, from campaignWorker.js's handleOrderConfirmed.
+// Deliberately never called for a pre-existing row: the 2026-08-09 rollout
+// only applies to orders created from this point forward, so historical rows
+// keep their blank I:K cells rather than being retroactively reset to
+// Hold/Processing (which would trigger real "please confirm" messages to
+// customers who already received their order).
+async function initializeOrderPipelineColumns(rowNumber) {
+  if (!enabled || !rowNumber) return;
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!I${rowNumber}:K${rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [['', 'Hold', 'Processing']] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Live, uncached read of every Confirmed_Orders row's pipeline-relevant
+// fields — polled by orderPipeline.js on its own timers. No cache (mirrors
+// getOffersCampaignRows()'s reasoning): the whole point is staff/customer
+// actions on the live Sheet/WhatsApp are picked up promptly.
+async function getConfirmedOrdersPipelineRows() {
+  if (!enabled) return [];
+  const result = await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.get(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A2:K`,
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+  const rows = result.data.values || [];
+  return rows
+    .map((row, i) => {
+      const [date, customerName, phone, address, products, totalPrice, invoiceLink, , sendInvoiceAction, confirmationStatus, orderStatus] = row;
+      return {
+        rowNumber: i + 2,
+        date,
+        customerName,
+        phone,
+        address,
+        products,
+        totalPrice,
+        invoiceLink: invoiceLink || '',
+        sendInvoiceAction: (sendInvoiceAction || '').trim(),
+        confirmationStatus: (confirmationStatus || '').trim(),
+        orderStatus: (orderStatus || '').trim(),
+      };
+    })
+    .filter((row) => row.phone);
+}
+
+// Writes Send Invoice Action (column I) to 'Sent' — called by
+// orderPipeline.js only after a confirmed successful send, so a transient
+// failure leaves 'Send Invoice'/'Resend' visible and gets retried on the
+// next poll (same TEST_TRIGGER/clearOfferTestTrigger convention this replaced
+// used before it grew a real 'Sent' status). 2026-08-10: also writes
+// Confirmation Status (column J) to 'Pending' in the same call — UNLESS
+// currentConfirmationStatus is already 'Confirmed' or 'Rejected' (a
+// resolved order must not be dragged back to "awaiting reply" just because
+// staff resent the invoice) — both columns in one request so a successful
+// invoice send can never leave one column updated and the other stale from
+// a partial write.
+async function markInvoiceSent(rowNumber, currentConfirmationStatus) {
+  if (!enabled || !rowNumber) return;
+  const resolved = ['Confirmed', 'Rejected'].includes((currentConfirmationStatus || '').trim());
+  const range = resolved
+    ? `${CONFIRMED_ORDERS_SHEET_NAME}!I${rowNumber}`
+    : `${CONFIRMED_ORDERS_SHEET_NAME}!I${rowNumber}:J${rowNumber}`;
+  const values = resolved ? [['Sent']] : [['Sent', 'Pending']];
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range,
+        valueInputOption: 'RAW',
+        requestBody: { values },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Writes Confirmation Status (column J) — called by
+// orderConfirmationReplyDetector.js's handler in llmAgent.js once a customer
+// replies تأكيد/تمام/confirm to the automated confirmation-request message.
+async function setConfirmationStatus(rowNumber, status) {
+  if (!enabled || !rowNumber) return;
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!J${rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[status]] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Appends one delivery-feedback row — mirrors appendConfirmedOrder's shape
+// (sanitizeRowForSheet + values.append). Called by feedbackRatingDetector.js's
+// handler in llmAgent.js once a recognizable 1-5 rating is found in the
+// customer's reply to orderPipeline.js's delivery+rating-request message.
+async function appendFeedback({ customerName, phone, rating, comments }) {
+  if (!enabled) return null;
+  const row = sanitizeRowForSheet([
+    new Date().toISOString(),
+    customerName || '',
+    phone || '',
+    rating != null ? String(rating) : '',
+    comments || '',
+  ]);
+  const result = await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.append(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${FEEDBACK_SHEET_NAME}!A:E`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [row] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+  const rowNumber = extractRowNumber(result.data.updates && result.data.updates.updatedRange);
+  logger.success(`Feedback logged for ${phone} (rating ${rating}, row ${rowNumber}).`);
+  return { rowNumber };
+}
+
+// Pure formatting (same dataTableStyleRequests shared look as the other CRM
+// tabs) — safe to re-run anytime, never touches cell content.
+async function formatFeedbackTab() {
+  if (!enabled) return;
+  const meta = await sheetsClient.spreadsheets.get({ spreadsheetId: config.googleSheetId }, { timeout: REQUEST_TIMEOUT_MS });
+  const sheetMeta = (meta.data.sheets || []).find((s) => s.properties.title === FEEDBACK_SHEET_NAME);
+  if (!sheetMeta) throw new Error(`"${FEEDBACK_SHEET_NAME}" tab not found — run ensureCrmTabs() first.`);
+  const sheetId = sheetMeta.properties.sheetId;
+  const hasExistingBanding = Boolean(sheetMeta.bandedRanges && sheetMeta.bandedRanges.length > 0);
+  const dateColIndex = FEEDBACK_HEADERS.indexOf('Date');
+  const ratingColIndex = FEEDBACK_HEADERS.indexOf('Rating');
+
+  const requests = [
+    ...dataTableStyleRequests(sheetId, FEEDBACK_HEADERS.length, hasExistingBanding),
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: dateColIndex, endColumnIndex: dateColIndex + 1 },
+        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', numberFormat: { type: 'DATE_TIME', pattern: 'yyyy-mm-dd hh:mm' } } },
+        fields: 'userEnteredFormat(horizontalAlignment,numberFormat)',
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: ratingColIndex, endColumnIndex: ratingColIndex + 1 },
+        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', textFormat: { bold: true } } },
+        fields: 'userEnteredFormat(horizontalAlignment,textFormat)',
+      },
+    },
+  ];
+
+  await sheetsClient.spreadsheets.batchUpdate(
+    { spreadsheetId: config.googleSheetId, requestBody: { requests } },
+    { timeout: REQUEST_TIMEOUT_MS }
+  );
+  logger.success(`Formatted "${FEEDBACK_SHEET_NAME}" (dark header, banding, auto-fit columns).`);
 }
 
 // Reads a single Confirmed_Orders row on demand — backs GET /invoice/:rowNumber
@@ -1292,30 +1598,6 @@ async function loadPhoneRowCache() {
   }
 }
 
-// Reads the current Order Status (column H) for every Leads row — the one
-// read path in this file that goes the OTHER direction: detecting a
-// STAFF-made edit in the sheet rather than something the bot itself wrote.
-// Powers deliveryFollowup.js's polling for rows manually switched to
-// "Delivered". Returns [{ row, phone, orderStatus }, ...].
-async function scanLeadsStatuses() {
-  if (!enabled) return [];
-  try {
-    const result = await sheetsCall(() =>
-      sheetsClient.spreadsheets.values.get(
-        { spreadsheetId: config.googleSheetId, range: `${LEADS_SHEET_NAME}!C2:H` },
-        { timeout: REQUEST_TIMEOUT_MS }
-      )
-    );
-    const rows = result.data.values || [];
-    return rows
-      .map((row, i) => ({ row: i + 2, phone: row[0], orderStatus: row[5] || '' }))
-      .filter((r) => r.phone);
-  } catch (err) {
-    logger.error('Could not scan Leads Order Status column.', err);
-    return [];
-  }
-}
-
 // Targeted single-cell write (Order Status only, column H) via the existing
 // phone -> row cache — used when the BOT itself determines a status change
 // (e.g. a customer confirming or disputing delivery), as opposed to
@@ -1351,9 +1633,8 @@ async function updateOrderStatus(phone, newStatus) {
 // Live, targeted read (Product Name..Order Status, columns E-H) for a single
 // phone's Leads row — powers the "فين طلبي؟" customer-facing status lookup
 // (llmAgent.js). Deliberately a fresh API call rather than a cached read:
-// Order Status can change from a STAFF edit directly in the Sheet UI (e.g.
-// manually marking a row "Delivered" — see deliveryFollowup.js), which never
-// flows back into the bot's own in-memory session state, so only a live read
+// Order Status can change from a STAFF edit directly in the Sheet UI, which
+// never flows back into the bot's own in-memory session state, so only a live read
 // is guaranteed current. Returns null if there's no row for this phone yet
 // (brand-new customer, never logged) or Sheets is unavailable — the caller
 // treats both the same way ("no order on file").
@@ -1826,7 +2107,6 @@ module.exports = {
   appendLead,
   logOrderHistory,
   getCustomerHistory,
-  scanLeadsStatuses,
   updateOrderStatus,
   getCurrentOrderStatus,
   isEnabled,
@@ -1860,7 +2140,13 @@ module.exports = {
   appendConfirmedOrder,
   attachInvoiceLinks,
   getConfirmedOrderByRow,
+  initializeOrderPipelineColumns,
+  getConfirmedOrdersPipelineRows,
+  markInvoiceSent,
+  setConfirmationStatus,
+  appendFeedback,
   formatOffersCampaignTable,
   formatTargetedClientsTab,
   formatConfirmedOrdersTab,
+  formatFeedbackTab,
 };

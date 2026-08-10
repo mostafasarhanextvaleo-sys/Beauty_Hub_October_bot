@@ -25,17 +25,29 @@ function isHumanHandoffCooldownActive(session) {
   return Boolean(session && session.humanHandoffAt && Date.now() - session.humanHandoffAt < HUMAN_HANDOFF_COOLDOWN_MS);
 }
 
-// A "did it arrive ok?" follow-up left unanswered for this long is treated as
-// stale rather than something a reply days later should still be interpreted
-// against — see isDeliveryFeedbackExpired below.
-const DELIVERY_FEEDBACK_WINDOW_MS = 48 * 60 * 60 * 1000;
+// 2026-08-09 order-management pipeline (see orderPipeline.js) — a
+// confirmation-request or delivery+rating-request left unanswered for this
+// long is treated as stale rather than something a reply days later should
+// still be interpreted against. Same window/shape as the retired
+// isDeliveryFeedbackExpired this replaces.
+const ORDER_CONFIRMATION_REPLY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const FEEDBACK_RATING_WINDOW_MS = 48 * 60 * 60 * 1000;
 
-function isDeliveryFeedbackExpired(session) {
+function isOrderConfirmationReplyExpired(session) {
   return Boolean(
     session &&
-      session.awaitingDeliveryFeedback &&
-      session.deliveryFeedbackRequestedAt &&
-      Date.now() - session.deliveryFeedbackRequestedAt >= DELIVERY_FEEDBACK_WINDOW_MS
+      session.awaitingOrderConfirmationReply &&
+      session.orderConfirmationRequestedAt &&
+      Date.now() - session.orderConfirmationRequestedAt >= ORDER_CONFIRMATION_REPLY_WINDOW_MS
+  );
+}
+
+function isFeedbackRatingExpired(session) {
+  return Boolean(
+    session &&
+      session.awaitingFeedbackRating &&
+      session.feedbackRequestedAt &&
+      Date.now() - session.feedbackRequestedAt >= FEEDBACK_RATING_WINDOW_MS
   );
 }
 
@@ -218,16 +230,27 @@ function getSession(chatId) {
       // while still blocking the model re-asserting the SAME order's
       // confirmed:true on later turns (2026-08-06 fix).
       confirmedProductIds: [],
-      // Set by deliveryFollowup.js when the "did it arrive ok?" message is
-      // sent; llmAgent.js checks this on the customer's next reply to know
-      // whether to interpret it as delivery-confirmation feedback rather
-      // than a normal message. Cleared once a reply is classified either way.
-      awaitingDeliveryFeedback: false,
-      // Timestamp set alongside awaitingDeliveryFeedback (deliveryFollowup.js)
-      // so a much-later reply can be recognized as stale — see
-      // isDeliveryFeedbackExpired above — instead of still being interpreted
-      // as delivery-confirmation feedback days after the fact.
-      deliveryFeedbackRequestedAt: null,
+      // 2026-08-09 order-management pipeline (see orderPipeline.js). Set by
+      // runOrderConfirmationRequestCheck when the confirm-your-order+invoice
+      // message is sent; llmAgent.js checks this on the customer's next
+      // reply to know whether to interpret it via
+      // orderConfirmationReplyDetector.js rather than as a normal message.
+      // Cleared once a reply is classified, or once stale (see
+      // isOrderConfirmationReplyExpired above).
+      awaitingOrderConfirmationReply: false,
+      orderConfirmationRequestedAt: null,
+      // Which Confirmed_Orders row this ask was about — needed so a matched
+      // reply knows which row's Confirmation Status to flip to 'Confirmed'.
+      pendingConfirmedOrderRow: null,
+      // Set by runOrderDeliveredCheck when the combined delivery-confirmation
+      // + rating-request message is sent; llmAgent.js checks this on the
+      // customer's next reply via feedbackRatingDetector.js. Cleared once a
+      // rating is found, or once stale (see isFeedbackRatingExpired above).
+      awaitingFeedbackRating: false,
+      feedbackRequestedAt: null,
+      // Which Confirmed_Orders row this rating is about — needed to look up
+      // the customer's name fresh when writing to the Feedback tab.
+      feedbackOrderRowNumber: null,
       llm: { history: [] },
       updatedAt: Date.now(),
     });
@@ -259,6 +282,8 @@ module.exports = {
   getAllSessions,
   HUMAN_HANDOFF_COOLDOWN_MS,
   isHumanHandoffCooldownActive,
-  DELIVERY_FEEDBACK_WINDOW_MS,
-  isDeliveryFeedbackExpired,
+  ORDER_CONFIRMATION_REPLY_WINDOW_MS,
+  isOrderConfirmationReplyExpired,
+  FEEDBACK_RATING_WINDOW_MS,
+  isFeedbackRatingExpired,
 };

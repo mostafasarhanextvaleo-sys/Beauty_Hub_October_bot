@@ -4,11 +4,12 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const googleSheets = require('./services/googleSheets');
 const { buildInvoiceHtml } = require('./utils/invoiceGenerator');
+const { buildCatalogHtml } = require('./utils/catalogPageGenerator');
 const whatsappClient = require('./whatsapp/client');
 const productMatcher = require('./bot/productMatcher');
 const productSearch = require('./bot/productSearch');
 const cartRecovery = require('./bot/cartRecovery');
-const deliveryFollowup = require('./bot/deliveryFollowup');
+const orderPipeline = require('./bot/orderPipeline');
 const campaignWorker = require('./bot/campaignWorker');
 const campaignKnowledge = require('./bot/campaignKnowledge');
 const deploymentAgent = require('./bot/deploymentAgent');
@@ -168,6 +169,19 @@ function startExpressServer() {
     }
   });
 
+  // Public product catalog page (2026-08-10) — the source productIdDetector.js/
+  // llmAgent.js's idMentionProduct handling was built to assume ("the new
+  // public catalog page", see those files' comments): a customer browses
+  // here, then quotes a product's id/SKU back to Sara in chat. Deliberately
+  // public/no token, same as the existing WEBSITE_URL self-browse link — it
+  // only ever shows product info that's already customer-facing. Reads
+  // straight from the in-process productMatcher (same auto-refreshed catalog
+  // every other feature uses), so no separate data path to keep in sync.
+  app.get('/catalog', (req, res) => {
+    const html = buildCatalogHtml(productMatcher.getAllProducts());
+    res.set('Content-Type', 'text/html; charset=utf-8').send(html);
+  });
+
   app.get('/reload-products', async (req, res) => {
     if (!config.reloadToken || !tokensMatch(req.header('X-Reload-Token'), config.reloadToken)) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -272,7 +286,7 @@ async function main() {
   // later reconnect — see client.js's onReady for why that's deliberate).
   whatsappClient.onReady(() => {
     cartRecovery.startCartRecoveryScheduler(whatsappClient.sendMessageToChatId);
-    deliveryFollowup.startDeliveryFollowupScheduler(whatsappClient.sendMessageToChatId, whatsappClient.buildPhoneToChatIdMap);
+    orderPipeline.startOrderPipelineScheduler(whatsappClient.sendMessageToChatId, whatsappClient.buildPhoneToChatIdMap);
     campaignWorker.startCampaignWorker(whatsappClient.sendMessageToChatId);
     // 2026-08-06: on every boot (including a fresh deploy this same feature
     // just triggered), reconcile pending_confirmations.json — finish the

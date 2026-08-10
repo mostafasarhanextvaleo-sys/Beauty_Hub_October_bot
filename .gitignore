@@ -13,6 +13,7 @@ bot_control_state.json
 evaluated_chats.json
 delivery_followup_state.json
 pending_confirmations.json
+order_pipeline_state.json
 .deploy_draft_result.json
 src/bot/corrections_pending.json
 src/bot/corrections.json.backup-*
@@ -21,3 +22,4 @@ training/venv/
 training/local_model/
 training/tokenized_dataset/
 training/lora_out/
+public/images_cache/

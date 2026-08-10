@@ -723,6 +723,17 @@ async function handleOrderConfirmed(chatId, { customerName, phone, address, prod
       invoiceService
         .generateAndAttachInvoice({ rowNumber: appended.rowNumber })
         .catch((err) => logger.error(`Invoice link attachment kickoff failed for ${chatId}.`, err));
+
+      // 2026-08-09 order-management pipeline (see orderPipeline.js) — sets
+      // the new I:K columns' defaults ('', 'Hold', 'Processing') on this
+      // brand-new row only. Same best-effort, non-blocking shape as the
+      // invoice kickoff above: a failure here must never retroactively
+      // affect the order row itself. orderPipeline.js's own 20s poll picks
+      // up the fresh 'Hold' row and sends the confirmation-request message;
+      // this function does not send anything itself.
+      googleSheets
+        .initializeOrderPipelineColumns(appended.rowNumber)
+        .catch((err) => logger.error(`Order-pipeline column init failed for ${chatId} (row ${appended.rowNumber}).`, err));
     }
   } catch (err) {
     logger.error(`Campaign Confirmed_Orders logging failed for ${chatId}.`, err);

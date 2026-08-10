@@ -1,6 +1,6 @@
 const { containsAny } = require('../utils/helpers');
 
-// Deterministic, same reasoning as escalationDetector.js/deliveryFeedbackDetector.js:
+// Deterministic, same reasoning as escalationDetector.js/orderConfirmationReplyDetector.js:
 // whether the bot answers from live Sheet data (vs guessing/half-remembering
 // from conversation history) must not depend on the LLM correctly reading
 // intent every time — a wrong guess here means a customer gets told
@@ -15,6 +15,23 @@ const ORDER_STATUS_PHRASES = [
   'فين الاوردر',
   'فين شحنتي',
   'فين الشحنة',
+  // 2026-08-10 additions — confirmed live: a real customer's "ممكن اعرف
+  // طلبى فين دلوقتي" ("can I know where my order is now") went unmatched
+  // because it puts the noun BEFORE "فين" ("order where"), the reverse of
+  // every phrase above ("فين طلبي" = "where order"). Both orderings are
+  // natural Egyptian Arabic word order, so both need covering. Missing this
+  // let the message fall through to the general LLM path instead of this
+  // deterministic short-circuit, and the LLM incorrectly completed a stale,
+  // long-abandoned product recommendation as a brand-new confirmed order
+  // (see llmAgent.js's applyValidatedOutput — order_data.confirmed trusted
+  // the model even though nothing in this turn was actually about
+  // confirming a purchase).
+  'طلبي فين',
+  'الطلب فين',
+  'اوردري فين',
+  'الاوردر فين',
+  'شحنتي فين',
+  'الشحنة فين',
   'وصل طلبي',
   'وصل الطلب',
   'وصل اوردري',

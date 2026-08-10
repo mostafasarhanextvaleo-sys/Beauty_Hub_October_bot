@@ -1,18 +1,34 @@
-const { getSession, updateSession, STAGES, isDeliveryFeedbackExpired } = require('./conversationMemory');
+const {
+  getSession,
+  updateSession,
+  STAGES,
+  isOrderConfirmationReplyExpired,
+  isFeedbackRatingExpired,
+} = require('./conversationMemory');
 const escalationDetector = require('./escalationDetector');
-const { containsAny, containsWord, normalizeArabic } = require('../utils/helpers');
+const { containsAny, containsWord, normalizeArabic, truncate } = require('../utils/helpers');
 const { buildEscalationResponse, baseLogFields, resolveEarlyStageOrderStatus } = require('./sessionLogHelpers');
-const deliveryFeedbackDetector = require('./deliveryFeedbackDetector');
+const orderConfirmationReplyDetector = require('./orderConfirmationReplyDetector');
+const feedbackRatingDetector = require('./feedbackRatingDetector');
 const orderStatusDetector = require('./orderStatusDetector');
 const websiteOrderDetector = require('./websiteOrderDetector');
 const adLeadDetector = require('./adLeadDetector');
+const productImageRequestDetector = require('./productImageRequestDetector');
+const productIdDetector = require('./productIdDetector');
+const { matchShippingZone } = require('./shippingZones');
 const productSearch = require('./productSearch');
 const productMatcher = require('./productMatcher');
 const localService = require('../services/localService');
 const geminiService = require('../services/geminiService');
 const openaiService = require('../services/openaiService');
 const { buildSystemPrompt, RESPONSE_SCHEMA } = require('./llmSystemPrompt');
-const { MESSAGES, ORDER_CANCELLATION_REQUEST_KEYWORDS } = require('./prompts');
+const {
+  MESSAGES,
+  ORDER_CANCELLATION_REQUEST_KEYWORDS,
+  productImageNotAvailable,
+  productImageReply,
+  orderConfirmationSummary,
+} = require('./prompts');
 const config = require('../config');
 const logger = require('../utils/logger');
 const trainingDataLogger = require('../utils/trainingDataLogger');
@@ -132,6 +148,64 @@ function hasClinicalSeverityKeyword(text) {
 // recommendation on the next turn instead of dead-ending on a false handover.
 const NORMAL_CONSULTATION_FALLBACK =
   'تمام، ده موضوع عادي جدًا وهساعدك فيه زي أي استشارة تانية 💛 لو حابة تضيفي أي تفاصيل زي روتين العناية الحالي أو الميزانية التقريبية، هقدر أرشحلك أنسب منتج من عندنا فورًا.';
+
+// 2026-08-09 — deterministic backstop for llmSystemPrompt.js's rule 8-ب
+// ("never claim a product photo is/isn't available — that's only known by
+// the deterministic Sheet-lookup path"). Confirmed live, chatId
+// 22299554107457@lid: the model said "مفيش صورة متاحة للجيل" and separately
+// "مفيش صورة متاحة لكريم صن بلوك ديرماتيك" on its own initiative — TWICE in
+// the same conversation, AFTER rule 8-ب had already shipped — for a product
+// that, in the second case, had a real, already-cached photo. Same two-layer
+// pattern already used for SPECIALIST_REFERRAL elsewhere in this file:
+// prompt-only hardening has repeatedly proven unreliable on this model for
+// "never say X" rules, so a code-level catch is the actual backstop, not the
+// prompt wording alone.
+const PHOTO_WORD_PATTERN = /صور/;
+const PHOTO_UNAVAILABILITY_PHRASES = ['مفيش', 'مش متاح', 'مش متاحه', 'لا يوجد', 'غير متاح', 'غير متاحه'].map(normalizeArabic);
+const PHOTO_HALLUCINATION_SAFE_REPLY =
+  'تحت أمرك 🌸 لو حابة صورة للمنتج، قوليلي "ممكن صورة" وهبعتهالك فورًا لو متاحة عندنا.';
+
+function isPhotoAvailabilityHallucination(replyText) {
+  if (!replyText) return false;
+  const normalized = normalizeArabic(replyText);
+  if (!PHOTO_WORD_PATTERN.test(normalized)) return false;
+  return PHOTO_UNAVAILABILITY_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+// 2026-08-09 P0 fix — confirmed live (chatId 260649351418038@lid, "ريماس
+// اسلام"): she gave her full order details (name, address, alt phone) in one
+// message, and the model's reply_text said "شكراً يا ريماس! هأكدلك الطلب
+// دلوقتي..." (reads as an immediate confirmation) — but its own structured
+// order_data.confirmed field was NOT true that turn, so applyValidatedOutput
+// correctly never set orderConfirmed, session.orderPlaced stayed false, and
+// NOTHING was ever written to Order History/Confirmed_Orders. She had no way
+// to know anything was wrong — she was told, in plain language, that her
+// order was being handled, then the conversation went quiet except for a
+// cart-recovery "still interested?" nudge, which flatly contradicts what she
+// was just told. Same "reply_text claims something the structured output
+// doesn't back up" pattern as PHOTO_HALLUCINATION_SAFE_REPLY above, just for
+// the single highest-stakes claim in this whole system. Deliberately errs
+// toward over-catching (a false positive just asks the customer one extra
+// confirming question, always safe) over under-catching (a false negative
+// means telling a customer an order went through when it didn't).
+const ORDER_CONFIRMATION_CLAIM_WORDS = [
+  'هأكدلك',
+  'هاكدلك',
+  'تم تأكيد الطلب',
+  'تم تأكيد الاوردر',
+  'تم تسجيل طلبك',
+  'هسجل طلبك',
+  'اتسجل طلبك',
+  'حجزتلك الطلب',
+  'اكدتلك الطلب',
+  'تم تأكيد حجزك',
+].map(normalizeArabic);
+
+function claimsOrderConfirmationInReply(replyText) {
+  if (!replyText) return false;
+  const normalized = normalizeArabic(replyText);
+  return ORDER_CONFIRMATION_CLAIM_WORDS.some((phrase) => normalized.includes(phrase));
+}
 
 // 2026-08-09 fix: NORMAL_CONSULTATION_FALLBACK above gets saved into
 // session.llm.history (see pushHistory near the bottom of handleMessage), so
@@ -270,10 +344,16 @@ function buildSearchQuery(session, currentText) {
 // an offer linked to a real catalog product, so a reply like "عايزة عرض
 // مبرد القدم" is always groundable/quotable even if that exact product
 // wouldn't otherwise surface from this turn's own search query.
-async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null, campaignOfferProduct = null } = {}) {
+async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProduct = null, campaignOfferProduct = null, idMentionProduct = null } = {}) {
   const candidates = await productSearch.searchProducts(text, { excludeIds });
   let merged = candidates;
-  [recommendedProduct, campaignOfferProduct].forEach((sticky) => {
+  // idMentionProduct (2026-08-10): a product the customer just referenced by
+  // its exact catalog ID/SKU (see productIdDetector.js/productMatcher.js's
+  // findByIdCandidate, resolved in handleMessage below) — guaranteed a
+  // candidate this turn regardless of whether the text-search/embeddings
+  // path would have surfaced it on its own, same reasoning as the two
+  // existing stickies below.
+  [recommendedProduct, campaignOfferProduct, idMentionProduct].forEach((sticky) => {
     if (!sticky) return;
     // Re-fetch live rather than trusting the cached session object, which is
     // a snapshot frozen at the moment it was first recommended — the 5-min
@@ -389,6 +469,40 @@ function validateModelOutput(output, candidates, bundleComplement = null) {
   };
 }
 
+// 2026-08-09 fix — confirmed live (chatId 22299554107457@lid): the model's
+// own mentioned_product_ids array order doesn't always match what reply_text
+// actually discusses. Real example: reply_text described "صن بلوك ديرماتيك
+// SPF 50" (the CREAM) by name, but mentioned_product_ids listed the GEL
+// variant (a near-duplicate sibling — same product line, one extra word in
+// the name) first — so the old `candidates.find(p => p.id === mentionedIds[0])`
+// blindly pinned the GEL as recommendedProduct. This was a mostly invisible
+// mismatch before (only affected which product got nudged later), but now
+// directly determines which real product PHOTO gets sent (2026-08-09
+// sheet-driven photo feature) — a silent mismatch became a visibly wrong
+// answer. Never invents a new candidate: only ever reorders AMONG the ids the
+// model itself already listed, using reply_text as the tiebreaker. Scores
+// each mentioned candidate by what FRACTION of its own name tokens actually
+// appear in reply_text (a ratio, not a raw count — a longer sibling name like
+// the gel's must not automatically win just by having more tokens overall);
+// only overrides the model's own ordering when there's a clear, non-tied
+// winner, so an ambiguous/no-signal case is left exactly as before this fix.
+function pickPrimaryMentionedProduct(mentionedIds, candidates, replyText) {
+  const mentionedProducts = mentionedIds.map((id) => candidates.find((p) => p.id === id)).filter(Boolean);
+  if (mentionedProducts.length <= 1) return mentionedProducts[0] || null;
+
+  const replyNormalized = normalizeArabic(replyText || '');
+  const scored = mentionedProducts.map((product) => {
+    const tokens = [...new Set(normalizeArabic(product.name || '').split(' ').filter((w) => w.length >= 3))];
+    const matched = tokens.filter((t) => replyNormalized.includes(t)).length;
+    const ratio = tokens.length > 0 ? matched / tokens.length : 0;
+    return { product, ratio };
+  });
+
+  const best = scored.reduce((a, b) => (b.ratio > a.ratio ? b : a), scored[0]);
+  const tiedForBest = scored.filter((s) => s.ratio === best.ratio).length > 1;
+  return tiedForBest ? mentionedProducts[0] : best.product;
+}
+
 // Code, never the model, decides order completion and human handover — both
 // are re-derived here from validated fields rather than trusted as asserted.
 function applyValidatedOutput(session, output, candidates, text) {
@@ -418,7 +532,7 @@ function applyValidatedOutput(session, output, candidates, text) {
   let shownProductIds = session.shownProductIds || [];
   const mentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
   if (mentionedIds.length > 0) {
-    const primary = candidates.find((p) => p.id === mentionedIds[0]);
+    const primary = pickPrimaryMentionedProduct(mentionedIds, candidates, output.reply_text);
     if (primary) recommendedProduct = primary;
     shownProductIds = [...new Set([...shownProductIds, ...mentionedIds])];
   }
@@ -619,22 +733,31 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
     // is the one place that later learns an order actually closed, so it's
     // the right place to note whether a nudge preceded it. Without this,
     // "did our cart-recovery nudges make money" has no answer anywhere.
-    // The second nudge promises real free shipping (see cartRecovery.js) —
-    // flagged explicitly and loudly here, not just "a nudge happened", since
-    // someone actually has to waive the delivery fee for this specific order
-    // at fulfillment for that promise to be true.
     const recoveryNote = session.secondNudgeSentAt
-      ? ' (بعد تذكير السلة المتروكة الثاني — 🚚 وعدنا العميل بتوصيل مجاني، لازم نلتزم بيه!)'
+      ? ' (بعد تذكير السلة المتروكة الثاني)'
       : session.nudgeSentAt
       ? ' (بعد تذكير السلة المتروكة)'
       : '';
+    // 2026-08-09 nationwide shipping expansion — surfaced directly in the
+    // admin ping so staff know the real delivery cost for fulfillment without
+    // opening the invoice; null (no confident zone match) is shown honestly
+    // as "needs manual check" rather than silently omitted, since a
+    // fulfillment step needs SOME answer to this. 2026-08-09 policy change:
+    // the free-shipping-promise override that used to sit here was removed
+    // store-wide — every order always shows the real computed zone fee now.
+    const orderShippingZone = matchShippingZone(applied.orderData.deliveryAddress);
+    const shippingLine = orderShippingZone
+      ? `الشحن: ${orderShippingZone.feeEGP} جنيه (${orderShippingZone.name})\n`
+      : `الشحن: محتاج تأكيد يدوي (العنوان مطابقش منطقة معروفة)\n`;
     const adminNotification =
       `✅ طلب جديد مكتمل! (وكيل ذكي)\n` +
       `المنتج: ${applied.recommendedProduct ? applied.recommendedProduct.name : 'غير محدد'}\n` +
       `الاسم: ${applied.orderData.customerName || 'غير محدد'}\n` +
       `رقم العميل: ${phone}\n` +
       `رقم بديل: ${applied.orderData.altPhone || 'غير محدد'}\n` +
-      `العنوان: ${applied.orderData.deliveryAddress || 'غير محدد'}${recoveryNote}`;
+      `العنوان: ${applied.orderData.deliveryAddress || 'غير محدد'}\n` +
+      shippingLine.trimEnd() +
+      recoveryNote;
     // Order History (separate append-only sheet — see googleSheets.js) is
     // what powers the "returning customer" memory feature: unlike the Leads
     // row (upserted per-phone, so it only ever reflects the CURRENT order),
@@ -666,10 +789,9 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
     // "SPECIALIST_REFERRAL" (persona rule 10-b: severe/cystic acne or an
     // explicit ask for a dermatologist) gets its own Order Status —
     // deliberately NOT "Issue", which staff already use specifically for a
-    // confirmed delivery problem (see deliveryFeedbackDetector.js's
-    // 'Issue' write). Conflating the two would make staff filtering by
-    // "Issue" surface skin-consultation referrals mixed in with real
-    // delivery complaints.
+    // confirmed delivery problem. Conflating the two would make staff
+    // filtering by "Issue" surface skin-consultation referrals mixed in with
+    // real delivery complaints.
     if (applied.handoverReason === 'SPECIALIST_REFERRAL') {
       const adminNotification =
         `🩺 حالة تحتاج متابعة متخصصة (وكيل ذكي)\n` +
@@ -746,8 +868,8 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
 // condition or an explicit ask for a dermatologist (persona rule 10-b,
 // llmSystemPrompt.js) — deliberately distinct from 'Issue' since it's a
 // pre-purchase consult referral, not a delivery complaint; 'Delivered' is
-// staff-set directly in the Sheet UI (see deliveryFollowup.js), never
-// written by the bot itself. 'Cancelled' can only appear on rows from
+// staff-set directly in the Sheet UI, never written by the bot itself.
+// 'Cancelled' can only appear on rows from
 // before AGENT_MODE=llm went live (the rules engine sets it; the LLM agent
 // never does).
 function buildOrderStatusReply(statusInfo) {
@@ -901,13 +1023,317 @@ async function handleOrderCancellationRequest({ chatId, phone, trimmedText, sess
   };
 }
 
-async function handleMessage({ chatId, phone, text, senderName }) {
+// Generic photo-request/filler words to ignore when looking for a
+// "distinguishing" token below — without this, the trigger words themselves
+// (e.g. "صورة") could coincidentally overlap a candidate product's name and
+// cause a wrong override. Deliberately just the common short filler set, not
+// an exhaustive stopword list — this only needs to strip the words this
+// exact feature's own vocabulary introduces.
+const PHOTO_REQUEST_FILLER_WORDS = new Set(
+  ['صوره', 'صور', 'محتاج', 'محتاجه', 'عايز', 'عايزه', 'ممكن', 'دا', 'دي', 'كمان', 'عندك', 'عندكم', 'ورينى', 'وريني', 'وريها'].map(normalizeArabic)
+);
+
+// 2026-08-09 addition, confirmed against real production data: Egyptian
+// customers commonly type "جيل" for "gel" (colloquial spelling) even when the
+// catalog itself consistently spells it "جل" — verified by checking all 45
+// real "gel" products in the live Products sheet, 100% spelled "جل", 0%
+// "جيل". A plain substring match alone would silently miss this real case
+// (confirmed live, chatId 22299554107457@lid, 2026-08-09 — see
+// findNamedAlternativeProduct's header comment for the full story). Kept as
+// a small explicit table, not a general fuzzy-match algorithm, so this stays
+// predictable and easy to extend if another confusable pair turns up.
+const PRODUCT_TOKEN_ALIASES = { [normalizeArabic('جيل')]: normalizeArabic('جل') };
+
+// Strips a leading Arabic definite article ("ال") before alias lookup/
+// matching — "الجيل"/"الجل" (as typed by a customer, with the article
+// attached) otherwise never matches either PRODUCT_TOKEN_ALIASES' bare
+// "جيل" key or a candidate product name's bare "جل" (product names are
+// almost never typed mid-sentence with the article attached). Length guard
+// avoids mangling short unrelated words that happen to start with the same
+// two letters — kept at >= 4 (not > 4, a real 2026-08-09 bug caught live:
+// "الجل" is exactly 4 characters, so a stricter ">4" guard silently left it
+// un-stripped and broke the single-message case "صورة الجل" entirely).
+function stripDefiniteArticle(token) {
+  return token.length >= 4 && token.startsWith('ال') ? token.slice(2) : token;
+}
+
+// Minimum name-token overlap with the PINNED product's own name for another
+// product to even be considered a candidate "variant" of it below — tuned
+// against the real catalog (2026-08-09): the true gel/cream sibling pair
+// shares 7 tokens ("بلوك"/"ديرماتيك"/"dermatique"/"sunblock"/"spf"/"50"...),
+// while unrelated same-category products sharing the pin's generic form-word
+// (e.g. "كريم") but nothing else typically share 0-1. 2 is a deliberately low
+// floor that still excludes those near-misses on this real data.
+const MIN_SHARED_TOKENS_FOR_VARIANT = 2;
+
+// 2026-08-09 addition — confirmed live (chatId 22299554107457@lid): a
+// customer asked for the pinned product's photo, then said "دا الكريم محتاج
+// صوره الجيل" (asking for the GEL variant instead of the pinned CREAM
+// variant) and kept getting the cream's photo both times, since
+// handleProductImageRequest always trusted session.recommendedProduct
+// wholesale.
+//
+// Two approaches were tried and measured against the real catalog before
+// landing on this one:
+// 1. Running the customer's full free-text message through the general
+//    semantic/keyword product search and trusting its top hit over the pin —
+//    rejected: on messy phrasing like the example above it returned
+//    unrelated products more often than the right one.
+// 2. Scoring EVERY same-category product by how many "distinguishing"
+//    message tokens (generic filler words and anything already in the
+//    pinned name excluded) appear in its name — rejected after testing:
+//    generic descriptive words like "كريم" (cream) are exactly the words a
+//    customer uses to refer back to what's ALREADY pinned, not to name
+//    something new, and they matched an unrelated product
+//    ("كولاجرا صن سكرين جل كريم") higher than the actual intended sibling.
+//
+// This version fixes that by scoring in two stages: first restrict candidates
+// to real "variant siblings" of the pin — other products in the same
+// category whose OWN name substantially overlaps the pinned product's name
+// (MIN_SHARED_TOKENS_FOR_VARIANT) — which, verified against the real
+// catalog, tightly isolates same-product-line variants (a gel/cream pair
+// shares 7 tokens; unrelated products sharing only a generic word share at
+// most 1). Only THEN is that narrow pool scored by the message's
+// distinguishing tokens to pick which sibling. No match at either stage
+// falls through to the pin unchanged, same as before this fix — this can
+// only ever narrow toward a real, catalog-verified sibling, never toward an
+// arbitrary product.
+function findNamedAlternativeProduct(text, pinnedProduct) {
+  if (!pinnedProduct) return null;
+  const pinnedNameTokens = normalizeArabic(pinnedProduct.name || '')
+    .split(' ')
+    .filter((w) => w.length >= 3);
+  if (pinnedNameTokens.length === 0) return null;
+
+  const messageTokens = normalizeArabic(text)
+    .split(' ')
+    .filter((w) => w.length >= 3)
+    .map(stripDefiniteArticle)
+    .map((w) => PRODUCT_TOKEN_ALIASES[w] || w)
+    .filter((w) => !PHOTO_REQUEST_FILLER_WORDS.has(w) && !pinnedNameTokens.includes(w));
+  if (messageTokens.length === 0) return null;
+
+  const siblings = productMatcher
+    .getAllProducts()
+    .filter((p) => p.id !== pinnedProduct.id && p.inStock !== false && p.category === pinnedProduct.category)
+    .map((p) => {
+      const nameNormalized = normalizeArabic(p.name || '');
+      const sharedWithPin = pinnedNameTokens.filter((t) => nameNormalized.includes(t)).length;
+      return { product: p, nameNormalized, sharedWithPin };
+    })
+    .filter((entry) => entry.sharedWithPin >= MIN_SHARED_TOKENS_FOR_VARIANT);
+
+  let best = null;
+  let bestScore = 0;
+  for (const entry of siblings) {
+    const score = messageTokens.filter((t) => entry.nameNormalized.includes(t)).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry.product;
+    }
+  }
+  return best;
+}
+
+// Deterministic, free, no API call — same reasoning as every other detector
+// above: which image (if any) reaches the customer must never depend on the
+// LLM's judgment, since it's strictly sheet-driven (Products!Image URL,
+// 2026-08-09 addition) and must never send an arbitrary/guessed image or a
+// broken link. Prefers the product already pinned this conversation
+// (session.recommendedProduct) so "show me a picture" mid-consultation means
+// exactly the item Sara just recommended — unless the message itself names a
+// different real product (see findNamedAlternativeProduct above); only falls
+// back to a fresh general search when nothing is pinned yet (e.g. the very
+// first message is a photo request). Re-reads the live catalog via
+// productMatcher.getById rather than trusting the session's possibly-stale
+// cached copy, so a staff member filling in the Image URL column after a
+// product was already recommended takes effect on the customer's very next
+// request, not just future ones.
+async function handleProductImageRequest({ chatId, phone, trimmedText, session, idMentionProduct = null }) {
+  const history = (session.llm && session.llm.history) || [];
+  let product = null;
+  let newlyFound = false;
+
+  // 2026-08-10: an explicit catalog ID/SKU in the same message (e.g. "صورة
+  // C102") is a stronger, more authoritative signal than the pinned-product
+  // recovery/variant-matching chain below — it's an exact match against the
+  // real catalog, not an inference from conversation history — so it takes
+  // priority over all of that rather than only being considered as a
+  // last-resort fallback.
+  if (idMentionProduct) {
+    product = idMentionProduct;
+    newlyFound = true;
+  } else if (session.recommendedProduct && session.recommendedProduct.id) {
+    const pinned = productMatcher.getById(session.recommendedProduct.id) || session.recommendedProduct;
+    product = pinned;
+
+    // 2026-08-09 fix — confirmed live (chatId 22299554107457@lid), a deeper
+    // issue than the gel/cream variant case below: session.recommendedProduct
+    // can go stale or point at a completely UNRELATED product whenever the
+    // model's mentioned_product_ids doesn't match what its own reply_text
+    // just said (see pickPrimaryMentionedProduct's comment for the general
+    // mechanism — this was observed live going wrong in more than one way
+    // across a single long conversation). Concretely: a customer picked
+    // "غسول ديرماتيك للبشرة الدهنية والمختلطة" by name, Sara's own reply
+    // confirmed exactly that product, yet the customer's next photo request
+    // sent a totally different, unrelated cleanser's photo instead. Ground-
+    // truth check: does the pinned product's name even appear in Sara's own
+    // LAST reply? If not, it's likely stale — attempt to recover the product
+    // actually just discussed by checking session.shownProductIds (every real
+    // product genuinely surfaced this conversation, including ones the model
+    // tagged in mentioned_product_ids even when it mis-picked which one to
+    // PIN as primary — see pickPrimaryMentionedProduct, which still records
+    // every tagged id into shownProductIds regardless of ordering). First
+    // attempt used a fresh productSearch.searchProducts() call instead —
+    // tested against the real failing case and rejected: the rolling
+    // SEARCH_QUERY_HISTORY_WINDOW (2 user turns) is too narrow to still
+    // contain the identifying text several turns after a numbered-list pick
+    // like "رقم ٣", so the search came back empty. Checking shownProductIds is
+    // both more precise (a curated pool of real, already-discussed products
+    // for THIS session, not a fuzzy full-catalog search) and synchronous (no
+    // extra API call). Only ever trusted if the candidate's name is itself
+    // confirmed present in that same last reply — a generic follow-up that
+    // doesn't name ANY product ("تحبي تحجزيه؟") finds no confirmed candidate
+    // either, so the original pin is safely left unchanged. This can only
+    // ever correct a clear, positively-confirmed mismatch, never introduce a
+    // new one.
+    const lastAssistantTurn = [...history].reverse().find((turn) => turn.role === 'assistant');
+    if (lastAssistantTurn && !productNameAppearsInReply(pinned, lastAssistantTurn.content)) {
+      const shownProducts = (session.shownProductIds || []).map((id) => productMatcher.getById(id)).filter(Boolean);
+      const confirmed = shownProducts.find((p) => productNameAppearsInReply(p, lastAssistantTurn.content));
+      if (confirmed && confirmed.id !== pinned.id) {
+        product = confirmed;
+        newlyFound = true;
+      }
+    }
+
+    // 2026-08-09 fix — confirmed live (chatId 22299554107457@lid): a customer
+    // named the variant they wanted ("الجل") in one message, then asked for
+    // the photo ("مفيش صوره بيه") in a separate, LATER message that doesn't
+    // repeat the product word at all. Checking trimmedText alone (this
+    // turn's message only) can never resolve that — reuses buildSearchQuery's
+    // existing rolling-window (last SEARCH_QUERY_HISTORY_WINDOW user turns),
+    // the same pattern already trusted elsewhere in this file for "carry
+    // recent context forward", so a distinguishing word from a recent turn
+    // still counts even when the photo-request turn itself is bare.
+    const alternative = findNamedAlternativeProduct(buildSearchQuery(session, trimmedText), product);
+    if (alternative) {
+      product = alternative;
+      newlyFound = true;
+    }
+  }
+
+  if (!product) {
+    const candidates = await productSearch.searchProducts(trimmedText, { limit: 1 });
+    if (candidates[0]) {
+      product = candidates[0];
+      newlyFound = true;
+    }
+  }
+
+  if (!product) {
+    const reply = MESSAGES.askWhichProductImage;
+    const historyAfterUser = pushHistory(history, 'user', trimmedText);
+    const historyAfterModel = pushHistory(historyAfterUser, 'assistant', reply);
+    updateSession(chatId, { llm: { history: historyAfterModel } });
+    return {
+      reply,
+      logEntry: {
+        ...baseLogFields(getSession(chatId), phone, trimmedText),
+        notes: 'العميلة طلبت صورة منتج بدون تحديد أو ترشيح سابق',
+      },
+    };
+  }
+
+  const reply = product.imageUrl ? productImageReply(product.name) : productImageNotAvailable(product.name);
+
+  const historyAfterUser = pushHistory(history, 'user', trimmedText);
+  const historyAfterModel = pushHistory(historyAfterUser, 'assistant', reply);
+  updateSession(chatId, {
+    llm: { history: historyAfterModel },
+    recommendedProduct: newlyFound ? product : session.recommendedProduct,
+    shownProductIds: newlyFound
+      ? [...new Set([...(session.shownProductIds || []), product.id])]
+      : session.shownProductIds,
+  });
+
+  const logEntry = {
+    ...baseLogFields(getSession(chatId), phone, trimmedText),
+    notes: product.imageUrl
+      ? `العميلة طلبت صورة المنتج "${product.name}" — تم إرسالها من رابط الشيت`
+      : `العميلة طلبت صورة المنتج "${product.name}" لكن مفيش رابط صورة مسجل في الشيت لسه`,
+  };
+
+  if (!product.imageUrl) {
+    return { reply, logEntry };
+  }
+
+  return {
+    reply,
+    logEntry,
+    // Consumed by whatsapp/client.js to actually send the photo — this
+    // module never touches WhatsApp/MessageMedia directly. productId feeds
+    // productImageCache.js's local disk cache (2026-08-09) so the SAME
+    // product's photo is served from disk, not re-fetched from the external
+    // host, on every request after the first.
+    productImage: { url: product.imageUrl, productName: product.name, productId: product.id },
+  };
+}
+
+async function handleMessage({ chatId, phone, text, senderName, imageContext }) {
   const session = getSession(chatId);
   // Captured before anything this turn touches the session — updateSession()
   // stamps a fresh updatedAt on every call below, so this is the one true
   // "how long has this customer been away" reading for buildCustomerProfile.
   const previousUpdatedAt = session.updatedAt;
+  // Deliberately what the customer actually TYPED, and nothing else — every
+  // deterministic intent detector below (escalation, order status/
+  // cancellation, product-image request, etc.) reads this, never modelText.
+  // 2026-08-09 vision feature: keeping this separate from modelText matters —
+  // a photo's Vision-generated description (imageContext) is free text that
+  // routinely contains words like "صورة" itself (describing a photo
+  // necessarily uses the word for "photo"), which would otherwise
+  // false-trigger productImageRequestDetector on every single analyzed
+  // incoming image, or in principle collide with any other keyword list here
+  // (escalationDetector, orderStatusDetector, ...). Caught before shipping by
+  // tracing exactly this collision, not from a live incident.
   const trimmedText = (text || '').trim();
+  // What the AI tiers/conversation history/candidate search actually see —
+  // customer's text plus a plain-language marker of what Sara "saw" in their
+  // photo, so product recommendations and replies can genuinely react to
+  // photo content while every deterministic branch above stays governed only
+  // by trimmedText. See visionService.js for why the vision model itself
+  // never talks to the customer directly — this is still just a string
+  // flowing through the exact same guardrails as typed text.
+  const modelText = imageContext
+    ? trimmedText
+      ? `${trimmedText}\n[صورة مرفقة من العميلة — وصف تلقائي للصورة: ${imageContext}]`
+      : `[صورة مرفقة من العميلة — وصف تلقائي للصورة: ${imageContext}]`
+    : trimmedText;
+
+  // Deterministic Product ID/SKU recognition (2026-08-10) — a customer
+  // quoting a catalog ID/SKU directly (from the new public catalog page, or
+  // a code read out by staff) must resolve to that EXACT product, never a
+  // guess from text/embedding search. Resolved once per turn, from
+  // trimmedText only (an ID is something a customer types, never something a
+  // photo's Vision description can contain) — same trimmedText-only
+  // discipline as every other deterministic detector above. Only the first
+  // candidate token that resolves to a real, in-stock product is used; a
+  // number/token that doesn't match anything real is silently ignored
+  // (falls through to the normal search flow below) rather than telling the
+  // customer "not found" for what might just be an unrelated number in
+  // their message — see productIdDetector.js for why bare numbers require an
+  // explicit "كود"/"منتج...رقم"/"#" marker before being treated as an id at
+  // all (avoids colliding with a customer picking "رقم ٣" off a numbered
+  // list, a real failure mode this codebase already had to fix once).
+  let idMentionProduct = null;
+  for (const candidate of productIdDetector.extractProductIdCandidates(trimmedText)) {
+    const match = productMatcher.findByIdCandidate(candidate);
+    if (match && match.inStock !== false) {
+      idMentionProduct = match;
+      break;
+    }
+  }
 
   // 2026-08-04 zero-lock safeguard: counts every real inbound customer
   // message toward the >60-message long-conversation threshold (see
@@ -987,69 +1413,115 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return handleWebsiteOrder({ chatId, phone, trimmedText, session, order: websiteOrder });
   }
 
-  // A "did it arrive ok?" follow-up left unanswered for 48h+ is stale — a
-  // reply days later (e.g. an unrelated new order) must not be misread as
-  // delivery-confirmation feedback and silently closed as Completed/Issue.
-  // Expire it and fall through to normal handling below.
-  if (isDeliveryFeedbackExpired(session)) {
-    updateSession(chatId, { awaitingDeliveryFeedback: false, deliveryFeedbackRequestedAt: null });
+  // 2026-08-09 order-management pipeline (see orderPipeline.js). A
+  // confirmation-request left unanswered for 48h+ is stale — a reply days
+  // later must not be misread as an order confirmation. Expire it and fall
+  // through to normal handling below.
+  if (isOrderConfirmationReplyExpired(session)) {
+    updateSession(chatId, { awaitingOrderConfirmationReply: false, orderConfirmationRequestedAt: null, pendingConfirmedOrderRow: null });
   }
 
   // Deterministic, free, no API call — same reasoning as the escalation
-  // check above: whether a delivery gets confirmed or disputed decides a
-  // real Sheet status write (Completed vs Issue) and whether the admin gets
-  // paged, so it must never depend on the LLM correctly reading intent every
-  // time. Only runs when deliveryFollowup.js actually sent the "did it
-  // arrive ok?" message for this customer — never fires on ordinary chat.
-  if (session.awaitingDeliveryFeedback) {
-    const classification = deliveryFeedbackDetector.classifyDeliveryFeedback(trimmedText);
-    if (classification === 'positive') {
+  // check above: whether Confirmed_Orders' Confirmation Status flips to
+  // 'Confirmed'/'Rejected' must never depend on the LLM correctly reading
+  // intent every time. Only runs when orderPipeline.js actually sent the
+  // confirmation-request message for this customer — never fires on
+  // ordinary chat. Rejection is checked BEFORE confirmation — see
+  // orderConfirmationReplyDetector.js's 2026-08-10 note: "مش تمام" ("not
+  // OK") contains the standalone word "تمام" and would otherwise
+  // false-match the confirmation check.
+  if (session.awaitingOrderConfirmationReply) {
+    if (orderConfirmationReplyDetector.isOrderRejectionReply(trimmedText)) {
+      const rowNumber = session.pendingConfirmedOrderRow;
+      await googleSheets.setConfirmationStatus(rowNumber, 'Rejected');
+      const reply = MESSAGES.orderCancelled;
+      const history = (session.llm && session.llm.history) || [];
+      const historyAfterModel = pushHistory(pushHistory(history, 'user', trimmedText), 'assistant', reply);
       updateSession(chatId, {
-        awaitingDeliveryFeedback: false,
-        deliveryFeedbackRequestedAt: null,
-        orderPlaced: true,
-        stage: STAGES.CLOSED,
+        awaitingOrderConfirmationReply: false,
+        orderConfirmationRequestedAt: null,
+        pendingConfirmedOrderRow: null,
+        llm: { history: historyAfterModel },
       });
-      await googleSheets.updateOrderStatus(phone, 'Completed');
-      return {
-        reply: 'الحمد لله! 🥰 سعيدة إنك استلمتي طلبك وعجبك. لو احتجتي أي حاجة تانية، أنا موجودة.',
-        logEntry: {
-          ...baseLogFields(getSession(chatId), phone, trimmedText),
-          orderStatus: 'Completed',
-          notes: 'العميل أكد استلام الطلب بنجاح (بعد رسالة المتابعة التلقائية)',
-        },
-      };
-    }
-    if (classification === 'negative') {
-      // A confirmed delivery issue hands the customer to a human immediately
-      // (2026-07-18 spec) — same 24h cooldown as an explicit escalation
-      // request above, so the bot goes silent and the admin team handles it
-      // without automated interference.
-      updateSession(chatId, {
-        awaitingDeliveryFeedback: false,
-        deliveryFeedbackRequestedAt: null,
-        humanHandoffAt: Date.now(),
-      });
-      await googleSheets.updateOrderStatus(phone, 'Issue');
       const adminNotification =
-        `⚠️ عميل أبلغ عن مشكلة في التوصيل\n` +
+        `❌ عميل رفض تأكيد أوردر (Confirmed_Orders row ${rowNumber})\n` +
         `رقم العميل: ${phone}\n` +
         `رسالته: ${trimmedText}`;
       return {
-        reply: 'يا خبر 💔 آسفة جداً إنك واجهتي مشكلة. هبعتلك حد من فريقنا يتواصل معاكي فوراً عشان نحل الموضوع.',
+        reply,
         logEntry: {
           ...baseLogFields(getSession(chatId), phone, trimmedText),
-          orderStatus: 'Issue',
-          notes: `العميل أبلغ عن مشكلة بعد التوصيل: ${trimmedText}`,
+          notes: `العميل رفض الأوردر (Confirmed_Orders row ${rowNumber}) عن طريق رد رفض تلقائي`,
         },
         adminNotification,
       };
     }
-    // classification === null (ambiguous) — fall through to the normal LLM
-    // flow below. buildSystemPrompt's awaitingDeliveryFeedback param tells
-    // Sara to ask a clarifying question rather than assume either way, and
-    // session.awaitingDeliveryFeedback stays true so the next reply gets
-    // another chance at deterministic classification.
+    if (orderConfirmationReplyDetector.isOrderConfirmationReply(trimmedText)) {
+      const rowNumber = session.pendingConfirmedOrderRow;
+      await googleSheets.setConfirmationStatus(rowNumber, 'Confirmed');
+      const reply = 'تمام يا قمر، تم تأكيد طلبك! 🌸 هيوصلك قريب.';
+      const history = (session.llm && session.llm.history) || [];
+      const historyAfterModel = pushHistory(pushHistory(history, 'user', trimmedText), 'assistant', reply);
+      updateSession(chatId, {
+        awaitingOrderConfirmationReply: false,
+        orderConfirmationRequestedAt: null,
+        pendingConfirmedOrderRow: null,
+        llm: { history: historyAfterModel },
+      });
+      return {
+        reply,
+        logEntry: {
+          ...baseLogFields(getSession(chatId), phone, trimmedText),
+          notes: `العميل أكد الأوردر (Confirmed_Orders row ${rowNumber}) عن طريق رد تأكيد تلقائي`,
+        },
+      };
+    }
+    // No match — fall through to the normal LLM flow below.
+    // buildSystemPrompt's awaitingOrderConfirmationReply param tells Sara to
+    // gently ask for تأكيد/تمام rather than assume either way, and
+    // session.awaitingOrderConfirmationReply stays true so the next reply
+    // gets another chance at deterministic matching.
+  }
+
+  // Same pattern as above, for the delivery+rating-request message
+  // (orderPipeline.js's runOrderDeliveredCheck).
+  if (isFeedbackRatingExpired(session)) {
+    updateSession(chatId, { awaitingFeedbackRating: false, feedbackRequestedAt: null, feedbackOrderRowNumber: null });
+  }
+
+  if (session.awaitingFeedbackRating) {
+    const parsed = feedbackRatingDetector.parseFeedbackRating(trimmedText);
+    if (parsed) {
+      const rowNumber = session.feedbackOrderRowNumber;
+      // Re-read the row's current customer name fresh from the Sheet rather
+      // than trusting anything cached on the session — the row is the
+      // source of truth for who this feedback belongs to.
+      const order = await googleSheets.getConfirmedOrderByRow(rowNumber).catch(() => null);
+      await googleSheets.appendFeedback({
+        customerName: (order && order.customerName) || '',
+        phone,
+        rating: parsed.rating,
+        comments: parsed.comment,
+      });
+      const reply = 'شكراً لتقييمك! 🌸 رأيك بيهمنا جداً وبيساعدنا نتحسن أكتر.';
+      const history = (session.llm && session.llm.history) || [];
+      const historyAfterModel = pushHistory(pushHistory(history, 'user', trimmedText), 'assistant', reply);
+      updateSession(chatId, {
+        awaitingFeedbackRating: false,
+        feedbackRequestedAt: null,
+        feedbackOrderRowNumber: null,
+        llm: { history: historyAfterModel },
+      });
+      return {
+        reply,
+        logEntry: {
+          ...baseLogFields(getSession(chatId), phone, trimmedText),
+          notes: `العميل قيّم الأوردر (Confirmed_Orders row ${rowNumber}): ${parsed.rating}/5`,
+        },
+      };
+    }
+    // No recognizable digit — fall through to the normal LLM flow below,
+    // same "ambiguous, give it another turn" behavior as above.
   }
 
   // Deterministic, free, no API call — same reasoning as escalation/delivery-
@@ -1069,14 +1541,24 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     return handleOrderCancellationRequest({ chatId, phone, trimmedText, session });
   }
 
+  // Deterministic, free, no API call — see handleProductImageRequest above
+  // for why this is never left to the LLM to decide/trigger.
+  if (productImageRequestDetector.isProductImageRequest(trimmedText)) {
+    return handleProductImageRequest({ chatId, phone, trimmedText, session, idMentionProduct });
+  }
+
   // Rolling-window query (see buildSearchQuery above) — not bare trimmedText
   // — so a terse final-step answer in the consultation still carries the
-  // skin-type/problem context from the turns just before it.
-  const searchQuery = buildSearchQuery(session, trimmedText);
+  // skin-type/problem context from the turns just before it. Uses modelText
+  // (not trimmedText) so a photo's Vision description can actually surface
+  // better-matched candidates (e.g. a dry-skin photo should favor
+  // moisturizers even if the caption itself said nothing about skin type).
+  const searchQuery = buildSearchQuery(session, modelText);
   const candidates = await selectCandidatesForTurn(searchQuery, {
     excludeIds: session.shownProductIds || [],
     recommendedProduct: session.recommendedProduct,
     campaignOfferProduct: session.campaignOfferProduct,
+    idMentionProduct,
   });
   // Routine-bundle upsell: only offered off the top (best-matched) candidate,
   // and only if it isn't already one of the two products in the bundle pair
@@ -1096,6 +1578,12 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   // clicked the ad every single turn.
   const adLandingForPrompt =
     session.adLandingPending && session.recommendedProduct ? { product: session.recommendedProduct } : null;
+  // 2026-08-10: tells Sara WHY idMentionProduct (already guaranteed a
+  // candidate this turn via selectCandidatesForTurn's sticky handling above)
+  // matters right now — the customer named it by its exact catalog ID/SKU,
+  // so this is a confirmed selection, not a guess to hedge on with a general
+  // consultation. See llmSystemPrompt.js's buildIdMentionSection.
+  const idMentionForPrompt = idMentionProduct ? { product: idMentionProduct } : null;
   // 2026-08-04 zero-lock safeguard: only becomes true once this session has
   // actually crossed the message-volume ceiling — see
   // MAX_INBOUND_MESSAGES_BEFORE_LONG_CONVERSATION. Tells the model to make a
@@ -1107,9 +1595,9 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const systemInstruction = buildSystemPrompt(
     candidates,
     validBundleComplement,
-    Boolean(session.secondNudgeSentAt),
     customerProfile,
-    Boolean(session.awaitingDeliveryFeedback),
+    Boolean(session.awaitingOrderConfirmationReply),
+    Boolean(session.awaitingFeedbackRating),
     websiteOrderForPrompt,
     campaignKnowledge.getActiveOffers(),
     // Soft repetition-loop nudge — exactly the 2nd identical message in a
@@ -1118,10 +1606,18 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // safeguard) — repeating yourself isn't hard evidence a human is needed.
     consecutiveRepeats === 1,
     adLandingForPrompt,
-    longConversationPending
+    longConversationPending,
+    // 2026-08-09 nationwide shipping expansion — the address collected in a
+    // PRIOR turn (this turn's own newly-extracted address, if any, isn't
+    // available until after the AI call that's about to use this prompt).
+    // buildSystemPrompt computes the real, deterministic zone/fee from this
+    // internally (shippingZones.js) — llmAgent.js never touches the fee
+    // itself, same separation used for product price grounding.
+    session.orderData && session.orderData.deliveryAddress,
+    idMentionForPrompt
   );
   const history = (session.llm && session.llm.history) || [];
-  const contents = [...history, { role: 'user', content: trimmedText }];
+  const contents = [...history, { role: 'user', content: modelText }];
 
   // Tier order when enabled: local -> openai -> gemini. The local fine-tuned
   // model was briefly rolled out to 100% of traffic starting 2026-07-13, but
@@ -1181,7 +1677,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     // next successful call still has full context and can act on it) and
     // opportunistically recover a phone number via a narrow heuristic when
     // one is clearly missing (see recoverOrderDataOnFailure).
-    const historyAfterUser = pushHistory(history, 'user', trimmedText);
+    const historyAfterUser = pushHistory(history, 'user', modelText);
     const recoveredOrderData = recoverOrderDataOnFailure(session, trimmedText);
 
     updateSession(chatId, {
@@ -1191,7 +1687,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     });
 
     const logEntry = {
-      ...baseLogFields(getSession(chatId), phone, trimmedText),
+      ...baseLogFields(getSession(chatId), phone, modelText),
       orderStatus: resolveEarlyStageOrderStatus(recoveredOrderData, session.recommendedProduct),
       notes: 'تعذر توليد رد موثوق من الذكاء الاصطناعي (محلي/OpenAI/Gemini) - تم حفظ الرسالة للمتابعة في المحاولة التالية',
     };
@@ -1244,7 +1740,69 @@ async function handleMessage({ chatId, phone, text, senderName }) {
     validated.reply_text = MESSAGES.outOfStockAtConfirmation;
   }
 
-  const historyAfterUser = pushHistory(history, 'user', trimmedText);
+  // Deterministic backstop — see claimsOrderConfirmationInReply's comment
+  // above. Only fires when the order genuinely wasn't confirmed by CODE
+  // (orderConfirmed false) and isn't already covered by the out-of-stock
+  // branch just above (which has its own, more specific honest message) —
+  // replaces the false "it's done" claim with a real confirmation question
+  // instead, built from the exact same fields already collected this turn,
+  // so the customer gets an honest, actionable next step (a genuine yes/no)
+  // rather than believing an order exists that the system never recorded.
+  if (!applied.orderConfirmed && !applied.outOfStockAtConfirmation && claimsOrderConfirmationInReply(validated.reply_text)) {
+    logger.warn(
+      `LLM claimed an order confirmation in reply_text but orderConfirmed was false — overriding with a real confirmation question (was: "${truncate(validated.reply_text, 200)}").`
+    );
+    validated.reply_text = orderConfirmationSummary({
+      productName: applied.recommendedProduct ? applied.recommendedProduct.name : null,
+      customerName: applied.orderData.customerName,
+      deliveryAddress: applied.orderData.deliveryAddress,
+      shippingZone: matchShippingZone(applied.orderData.deliveryAddress),
+    });
+  }
+
+  // Deterministic backstop — see PHOTO_HALLUCINATION_SAFE_REPLY's comment
+  // above. Checked after every other reply_text substitution above so it
+  // catches a hallucinated photo claim regardless of which branch produced
+  // it, and last so it always has the final say over what reaches the
+  // customer.
+  if (isPhotoAvailabilityHallucination(validated.reply_text)) {
+    logger.warn(
+      `LLM claimed photo (un)availability on its own — overriding with a safe reply (was: "${truncate(validated.reply_text, 200)}").`
+    );
+    validated.reply_text = PHOTO_HALLUCINATION_SAFE_REPLY;
+  }
+
+  // 2026-08-09 addition — confirmed live (chatId 33561512034419@lid): a real
+  // customer tried to cancel a CONFIRMED order 8 separate times in natural
+  // colloquial phrasing that ORDER_CANCELLATION_REQUEST_KEYWORDS didn't cover
+  // (see prompts.js's 2026-08-09 additions — Egyptian colloquial contractions
+  // like "م" for "مش" and "هلغي" for "الغي" can never be fully enumerated).
+  // Every attempt fell through to general consultation, which had no real way
+  // to help and repeated the exact same "contact customer service" sentence
+  // 4 times verbatim, with no phone number and no actual escalation ever
+  // firing. This is the general safety net keyword lists can't be: whenever a
+  // customer has a CONFIRMED order (the highest-stakes state — an unresolved
+  // complaint here risks an unwanted delivery, a refund dispute, a bad
+  // review) and Sara's reply this turn is byte-identical to her own
+  // immediately preceding reply, that repetition alone is proof the
+  // conversation isn't moving forward — escalate for real instead of sending
+  // the same non-answer again. Reuses REPEATED_FALLBACK_LOOP's exact reply/
+  // reason (same underlying problem: a redirect that isn't working), just
+  // triggered by raw reply repetition rather than a specific classified
+  // downgrade reason, and fires on the very first detected repeat (not a
+  // second one) given the higher stakes of an already-confirmed order.
+  const lastAssistantReply = [...history].reverse().find((turn) => turn.role === 'assistant');
+  const isRepeatedPostOrderReply = Boolean(
+    session.orderPlaced && lastAssistantReply && lastAssistantReply.content === validated.reply_text
+  );
+  if (isRepeatedPostOrderReply && !fallbackLoopDetected) {
+    validated.reply_text = REPEATED_FALLBACK_LOOP_REPLY;
+    applied.humanHandover = true;
+    applied.handoverReason = REPEATED_FALLBACK_LOOP_REASON;
+    applied.stage = STAGES.CLOSED;
+  }
+
+  const historyAfterUser = pushHistory(history, 'user', modelText);
   const historyAfterModel = pushHistory(historyAfterUser, 'assistant', validated.reply_text);
 
   updateSession(chatId, {
@@ -1286,7 +1844,7 @@ async function handleMessage({ chatId, phone, text, senderName }) {
   const { logEntry, adminNotification, orderHistoryEntry } = buildLogEntryAndNotification(
     getSession(chatId),
     phone,
-    trimmedText,
+    modelText,
     validated,
     applied
   );

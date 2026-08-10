@@ -1,5 +1,6 @@
 const logger = require('./logger');
-const { STORE_NAME, FLAT_SHIPPING_FEE_EGP } = require('../bot/llmSystemPrompt');
+const { STORE_NAME } = require('../bot/llmSystemPrompt');
+const { matchShippingZone } = require('../bot/shippingZones');
 
 function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,7 +37,18 @@ function formatEgp(amount) {
 // any other Arabic web page.
 function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal }) {
   const productTotalNum = parsePriceToNumber(productTotal);
-  const grandTotal = productTotalNum + FLAT_SHIPPING_FEE_EGP;
+  // 2026-08-09 nationwide shipping expansion — the flat 60-EGP constant this
+  // used to add is gone; the real fee now depends on the customer's actual
+  // address, computed the same deterministic way everywhere else in this
+  // codebase (shippingZones.js). An address that doesn't confidently match
+  // any zone gets an honest "needs confirming" line rather than a wrong
+  // number silently baked into the grand total.
+  const shippingZone = matchShippingZone(address);
+  const shippingFeeNum = shippingZone ? shippingZone.feeEGP : 0;
+  const shippingLabel = shippingZone
+    ? `${formatEgp(shippingFeeNum)} (${escapeHtml(shippingZone.name)})`
+    : 'هيتم تأكيدها من الفريق';
+  const grandTotal = productTotalNum + shippingFeeNum;
 
   return `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -78,7 +90,7 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
   </table>
   <table class="totals">
     <tr><td>إجمالي المنتجات</td><td>${formatEgp(productTotalNum)}</td></tr>
-    <tr><td>مصاريف الشحن</td><td>${formatEgp(FLAT_SHIPPING_FEE_EGP)}</td></tr>
+    <tr><td>مصاريف الشحن</td><td>${shippingLabel}</td></tr>
     <tr class="grand"><td>الإجمالي الكلي</td><td>${formatEgp(grandTotal)}</td></tr>
   </table>
   <div class="footer">شكراً لثقتك في ${escapeHtml(STORE_NAME)} 🌸 — الفاتورة دي اتولدت أوتوماتيك، لو في أي استفسار تواصلي مع فريقنا.</div>

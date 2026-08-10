@@ -3,12 +3,11 @@ const logger = require('../utils/logger');
 const googleSheets = require('./googleSheets');
 
 const CATEGORY_VALUES = ['skincare', 'haircare', 'makeup', 'bodycare'];
-// Fetches one column past the last one this code actually reads (In Stock) —
-// production's Sheet has an extra "Routine Step" column after In Stock
-// (added by scripts/tagProductsSkinType.js) that this code has never read;
-// widening the range rather than hardcoding an exact final letter means it
-// keeps working unchanged whether that extra column exists or not, instead
-// of silently truncating it or breaking if the sheet gains another column.
+// Range already reached column J before this field existed (see the old
+// comment this replaced — J was fetched-but-unused, as headroom for exactly
+// this kind of addition). Column I ("Routine Step") stays unread by this
+// code; J is now "Image URL" (2026-08-09 addition, outgoing product-photo
+// feature — see rowToProduct below).
 const PRODUCTS_RANGE = `${googleSheets.PRODUCTS_SHEET_NAME}!A2:J`;
 
 function splitList(value) {
@@ -32,8 +31,14 @@ function parseBool(value) {
 // see the migration this was run alongside). Column G is now that merged
 // column; everything from H onward shifted left by one. `targetType` is the
 // single in-memory field name replacing both `skinType`/`hairType`.
+// Column J, "Image URL" (2026-08-09) — the ONLY source the bot is allowed to
+// send a product photo from (see productImageRequestDetector.js /
+// llmAgent.js's handleProductImageRequest). Deliberately just a trimmed
+// passthrough with no validation here: an empty/missing cell must produce
+// imageUrl: '' (falsy), which the send path already treats as "no photo yet,
+// tell the customer gracefully" — never a broken link or a guessed image.
 function rowToProduct(row) {
-  const [id, name, category, price, description, benefits, targetType, inStock] = row;
+  const [id, name, category, price, description, benefits, targetType, inStock, , imageUrl] = row;
   const normalizedCategory = (category || '').toString().trim().toLowerCase();
 
   if (!name || !normalizedCategory) return null;
@@ -54,6 +59,7 @@ function rowToProduct(row) {
     benefits: splitList(benefits),
     targetType: splitList(targetType),
     inStock: parseBool(inStock),
+    imageUrl: (imageUrl || '').toString().trim(),
   };
 }
 

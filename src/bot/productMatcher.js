@@ -134,6 +134,43 @@ function getById(id) {
   return products.find((p) => p.id === id) || null;
 }
 
+// Resolves a raw ID/SKU-like token (from productIdDetector.js — either an
+// already-normalized SKU string like "C102", or a bare digit string like
+// "102" from an explicit "المنتج رقم 102" phrasing) against the real live
+// catalog. Never guesses: only an exact match counts. For a bare number that
+// doesn't exactly equal any real id, the second step reconstructs it against
+// each alphabetic-prefix + digit-width combo actually IN USE in the current
+// catalog (e.g. "C" + 3 digits, derived from real ids like "C001" — never
+// hardcoded), so "102" can resolve to "C102" without this code needing to
+// know the store's SKU scheme in advance, and without silently matching a
+// prefix the catalog doesn't actually use.
+function findByIdCandidate(candidate) {
+  if (!candidate) return null;
+  const upper = candidate.toString().trim().toUpperCase();
+  if (!upper) return null;
+
+  const exact = products.find((p) => p.id.toUpperCase() === upper);
+  if (exact) return exact;
+
+  if (!/^\d+$/.test(upper)) return null;
+
+  const prefixWidths = new Map();
+  products.forEach((p) => {
+    const m = p.id.match(/^([A-Za-z]+)(\d+)$/);
+    if (m && !prefixWidths.has(m[1].toUpperCase())) {
+      prefixWidths.set(m[1].toUpperCase(), m[2].length);
+    }
+  });
+
+  for (const [prefix, width] of prefixWidths) {
+    const reconstructed = `${prefix}${upper.padStart(width, '0')}`;
+    const match = products.find((p) => p.id.toUpperCase() === reconstructed);
+    if (match) return match;
+  }
+
+  return null;
+}
+
 module.exports = {
   findBestMatch,
   findByCategory,
@@ -144,4 +181,5 @@ module.exports = {
   getProductCount,
   getAllProducts,
   getById,
+  findByIdCandidate,
 };

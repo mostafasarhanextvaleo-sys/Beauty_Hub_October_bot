@@ -51,7 +51,24 @@ const MESSAGES = {
 
   representativeConfirm:
     'حد من فريقنا هيتواصل معاكي بسرعة لتأكيد السعر والتوفر بالظبط 🌸',
+
+  // 2026-08-09 addition — outgoing product-photo feature. Used only when
+  // nothing is pinned/found for the customer's photo request (see
+  // llmAgent.js's handleProductImageRequest) — never a made-up product name.
+  askWhichProductImage:
+    'تحبي أشوفلك صورة أي منتج بالظبط؟ قوليلي اسمه أو احتياجك عشان أرشحلك حاجة الأول 🌸',
 };
+
+// 2026-08-09 addition — shown when a real, matched product has no Image URL
+// yet in the Products sheet (empty/missing cell). Never a broken link or a
+// wrong image — see productMatcher/googleSheetsProducts.js's imageUrl field.
+function productImageNotAvailable(productName) {
+  return `للأسف صورة "${productName}" لسه بتتظبط عندنا حالياً، هبعتهالك أول ما تكون جاهزة 🌸 تحبي وصف تفاصيل المنتج بدل كده؟`;
+}
+
+function productImageReply(productName) {
+  return `تمام، دي صورة ${productName} 🌸`;
+}
 
 // --- A/B-testable message variants ---
 // Each variant has a stable `id` that gets logged to chat_history.log
@@ -140,12 +157,24 @@ function getMediaCaptionPrefix(messageType) {
   return ack ? `${ack}\n` : '';
 }
 
-function orderConfirmationSummary({ productName, customerName, deliveryAddress }) {
+// shippingZone (optional, 2026-08-09): { name, feeEGP } from
+// shippingZones.js's matchShippingZone(deliveryAddress) — deterministic, real
+// data, never text the model wrote. Omitted entirely (not shown as "غير
+// محدد") when null, since a customer whose area doesn't map to a known zone
+// yet should be told the team will confirm it, not shown a blank/missing
+// line that looks like an oversight. Optional/backward compatible: agent.js's
+// two existing call sites (the rules-engine path) don't pass this and are
+// completely unaffected.
+function orderConfirmationSummary({ productName, customerName, deliveryAddress, shippingZone }) {
+  const shippingLine = shippingZone
+    ? `الشحن: ${shippingZone.feeEGP} جنيه (${shippingZone.name})\n`
+    : '';
   return (
     'تمام 🌸 خليني أتأكد من البيانات:\n' +
     `المنتج: ${productName || 'غير محدد'}\n` +
     `الاسم: ${customerName || 'غير محدد'}\n` +
     `العنوان: ${deliveryAddress || 'غير محدد'}\n` +
+    shippingLine +
     'البيانات دي صح؟'
   );
 }
@@ -248,6 +277,27 @@ const ORDER_CANCELLATION_REQUEST_KEYWORDS = [
   'شيل الطلب',
   'مش عايزة الطلب',
   'مش عايز الطلب',
+  // 2026-08-09 additions — confirmed live (chatId 33561512034419@lid): a real
+  // customer tried to cancel a confirmed order EIGHT separate times, in
+  // natural colloquial phrasing, and NONE of the phrases above matched any of
+  // them — every attempt fell through to the general LLM, which had no real
+  // way to help and just repeated a canned "contact customer service"
+  // deflection with no phone number, no escalation, no actual cancellation.
+  // These add the exact real phrasings that were missed: colloquial future
+  // tense ("هلغي" = "I'll cancel", not the imperative "الغي" already covered)
+  // and "won't receive/take it" framed around the order itself.
+  'هلغي الطلب',
+  'هلغي الاوردر',
+  'مش هستلم الطلب',
+  'مش هستلم الاوردر',
+  'مش هاخد الطلب',
+  'مش هاخده الطلب',
+  'مش هاخد الاوردر',
+  'مش هاخده الاوردر',
+  'رافضة الطلب',
+  'رافض الطلب',
+  'رافضة الاوردر',
+  'رافض الاوردر',
 ];
 
 // Very short (1-word) yes/no. Must go through containsWord() (whole-word),
@@ -289,6 +339,8 @@ module.exports = {
   getMediaNoCaptionReply,
   getMediaCaptionPrefix,
   MEDIA_ESCALATION_THRESHOLD,
+  productImageNotAvailable,
+  productImageReply,
   CATEGORY_KEYWORDS,
   SKIN_TYPE_KEYWORDS,
   HAIR_TYPE_KEYWORDS,

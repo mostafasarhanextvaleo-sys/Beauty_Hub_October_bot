@@ -184,7 +184,7 @@ async function handleAbandonedCartReport() {
     `إجمالي العملاء اللي اتبعتلهم تذكير: ${firstNudged.length}\n` +
     `اتحولوا لأوردر مؤكد: ${totalRecovered} (${recoveryPct}%)\n` +
     `  - اتحول من التذكير الأول بس: ${recoveredAfterFirstOnly.length}\n` +
-    `  - اتبعتلهم تذكير تاني (فيه توصيل مجاني): ${secondNudged.length}، واتحول منهم: ${recoveredAfterSecond.length}\n` +
+    `  - اتبعتلهم تذكير تاني: ${secondNudged.length}، واتحول منهم: ${recoveredAfterSecond.length}\n` +
     `لسه مستنيين رد: ${stillWaiting}`
   );
 }

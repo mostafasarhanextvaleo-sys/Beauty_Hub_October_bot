@@ -12,7 +12,7 @@ const { buildSystemPrompt, RESPONSE_SCHEMA } = require('../src/bot/llmSystemProm
 
 const SPECIALIST_REFERRAL_REPLY_MARKER = 'محتاجة متابعة من فريقنا المتخصص';
 
-const systemPrompt = buildSystemPrompt([], null, false, null, false, null, [], '', null, false);
+const systemPrompt = buildSystemPrompt([], null, null, false, false, null, [], '', null, false);
 
 const cases = [
   {

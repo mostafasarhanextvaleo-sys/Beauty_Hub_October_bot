@@ -50,29 +50,24 @@ const FIRST_NUDGE_WITH_PRICE = [
   { id: 'nudge1_price_b', text: (name, price) => `هاي، لسه فاكراك مهتمة بـ${name} (${price} جنيه) — محتاجة أي تفاصيل زيادة؟` },
 ];
 
-// Second nudge: only sent if the first got no reply. The incentive here is
-// real free shipping (staff waive the delivery fee at fulfillment — see the
-// recoveryNote in llmAgent.js's buildLogEntryAndNotification, which flags
-// this explicitly on the Sheet/admin alert so it actually gets honored) —
-// deliberately NOT a % price discount, since price_quoted is validated
-// digit-for-digit against the Sheet in validateModelOutput and there's no
-// mechanism to compute/verify a discounted price against that check. A
-// fabricated "stock running out" urgency claim is avoided for the same
-// reason as before: no real inventory system backs it, and a customer
-// noticing it wasn't true costs more trust than the nudge is worth.
+// Second nudge: only sent if the first got no reply. 2026-08-09 policy
+// change: this used to incentivize with a real free-shipping promise (staff
+// waived the delivery fee at fulfillment) — removed store-wide, every order
+// now always shows the real computed regional shipping fee, no exceptions.
+// Variant ids kept as-is (nudge2_shipping_a/b) even though neither mentions
+// shipping anymore — scripts/scheduledReport.js's nudge-attribution stats
+// key off these exact strings historically, and renaming would silently
+// break that report's continuity. Still deliberately NOT a % price discount
+// (see FIRST_NUDGE_WITH_PRICE's comment on price_quoted validation) and
+// still no fabricated urgency claim, same honesty reasoning as before.
 const SECOND_NUDGE_WITH_PRICE = [
   {
-    // 2026-08-06 fix: same "لسه محجوز عشانك" honesty issue as
-    // FIRST_NUDGE_WITH_PRICE's variant a above, swapped the same way — the
-    // real free-shipping promise right after it is unaffected and stays as-is.
     id: 'nudge2_shipping_a',
-    text: (name, price) =>
-      `الـ${name} اللي سألتي عليه لسه متاح بـ${price} جنيه بس! 🌸 أكدي الأوردر خلال 24 ساعة كده وهضيفلك توصيل مجاني هدية منا ليكي.`,
+    text: (name, price) => `الـ${name} اللي سألتي عليه لسه متاح بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟`,
   },
   {
     id: 'nudge2_shipping_b',
-    text: (name, price) =>
-      `لسه فاكراك 🌸 ${name} (${price} جنيه) في انتظارك — أكدي دلوقتي وهعملك توصيل مجاني كهدية بسيطة منا، إيه رأيك؟`,
+    text: (name, price) => `لسه فاكراك 🌸 ${name} (${price} جنيه) في انتظارك — حابة نكمل الأوردر؟`,
   },
 ];
 

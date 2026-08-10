@@ -36,7 +36,8 @@ const conversationMemoryStub = {
     return conversationMemoryStub.getSession(chatId);
   },
   resetSession(chatId) { fakeSessions.delete(chatId); },
-  isDeliveryFeedbackExpired() { return false; },
+  isOrderConfirmationReplyExpired() { return false; },
+  isFeedbackRatingExpired() { return false; },
 };
 require.cache[conversationMemoryPath] = { id: conversationMemoryPath, filename: conversationMemoryPath, loaded: true, exports: conversationMemoryStub };
 

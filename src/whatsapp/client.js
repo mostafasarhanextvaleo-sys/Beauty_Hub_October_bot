@@ -4,7 +4,9 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const agent = require('../bot/agent');
 const googleSheets = require('../services/googleSheets');
-const { sanitizePhoneNumber, truncate, normalizeArabic, sleep } = require('../utils/helpers');
+const visionService = require('../services/visionService');
+const productImageCache = require('../services/productImageCache');
+const { sanitizePhoneNumber, truncate, normalizeArabic, sleep, withTimeout } = require('../utils/helpers');
 const chatLogger = require('../utils/chatLogger');
 const { runExclusive } = require('../utils/chatLock');
 const { getSession, updateSession, getAllSessions, isHumanHandoffCooldownActive } = require('../bot/conversationMemory');
@@ -74,8 +76,8 @@ function extractOfferText(rawText) {
 // Resolve the real phone the same way the regular message handler already
 // does, falling back to the raw chatId only if resolution fails.
 // 2026-07-30 incident: this is called once per stored session, serially, by
-// both getBroadcastRecipients and deliveryFollowup.js's buildPhoneToChatIdMap
-// — with no timeout, a single hung puppeteer call (the exact symptom of a
+// both getBroadcastRecipients and buildPhoneToChatIdMap (used by
+// orderPipeline.js) — with no timeout, a single hung puppeteer call (the exact symptom of a
 // wedged renderer) stalled every remaining session behind it, turning a scan
 // that should take seconds into one that never finished. RESOLVE_TIMEOUT_MS
 // bounds each call so one stuck contact can't block the rest of the batch.
@@ -115,9 +117,9 @@ async function getBroadcastRecipients() {
 }
 
 // Reverse of what appendLead's phoneRowCache does: Sheets features that
-// start from a bare phone number (e.g. deliveryFollowup.js reading the
-// Leads sheet for staff-made "Delivered" edits) need the actual chatId to
-// send to — a phone alone isn't addressable via client.sendMessage() for
+// start from a bare phone number (e.g. orderPipeline.js reading
+// Confirmed_Orders for staff-made status/action edits) need the actual
+// chatId to send to — a phone alone isn't addressable via client.sendMessage() for
 // @lid privacy-mode contacts. Reuses the same resolution as
 // getBroadcastRecipients above; every phone in the Leads sheet originated
 // from a real conversation, so it will have a resolvable session here.
@@ -253,6 +255,14 @@ const RECOGNIZED_MEDIA_TYPES = new Set([
   'vcard',
   'multi_vcard',
 ]);
+
+// 2026-08-09 vision feature — bounds message.downloadMedia(), which goes
+// through the Puppeteer renderer (see the 2026-07-30 wedged-renderer incident
+// elsewhere in this file's history) so it gets the same kind of hard timeout
+// as every other renderer-touching call. The equivalent bound for outgoing
+// product-photo fetches now lives in productImageCache.js, which owns that
+// whole fetch-or-serve-from-disk path.
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 15000;
 
 let status = 'starting';
 let client = null;
@@ -624,15 +634,48 @@ function createClient() {
           return;
         }
 
-        // Pure media with no caption — nothing for the agent to act on. Reply
-        // honestly (never go silent) and skip touching conversation state or
-        // Sheets, since nothing about the customer's need actually changed —
-        // except for the one small piece of state this now tracks (2026-08-09
-        // fix): consecutive unreadable-media sends in a row, so the reply can
-        // degrade (normal ack → catalog link → human handoff) instead of
-        // repeating the exact same sentence forever. Confirmed live as a real
-        // failure mode — see prompts.js's getMediaNoCaptionReply comment.
-        if (isMedia && !caption) {
+        // 2026-08-09 vision feature — an incoming photo is no longer
+        // automatically "unreadable": download it and ask OpenAI Vision for a
+        // neutral description (see visionService.js), then let that flow into
+        // the normal agent turn just like a caption would. Never blocks on a
+        // download/analysis failure — falls through to the exact same "can't
+        // see this" behavior that existed before this feature, so a Vision
+        // API outage, a missing OPENAI_API_KEY, or a slow/wedged download
+        // (message.downloadMedia() goes through the same Puppeteer renderer
+        // implicated in the 2026-07-30 wedged-renderer incident elsewhere in
+        // this file, hence the explicit timeout) degrades safely instead of
+        // ever leaving the customer without a reply.
+        let imageDescription = null;
+        if (message.type === 'image') {
+          try {
+            const media = await withTimeout(
+              message.downloadMedia(),
+              IMAGE_DOWNLOAD_TIMEOUT_MS,
+              'message.downloadMedia (incoming image)'
+            );
+            if (media && media.data) {
+              imageDescription = await visionService.analyzeImage({
+                base64Data: media.data,
+                mimeType: media.mimetype || 'image/jpeg',
+                caption,
+              });
+            }
+          } catch (err) {
+            logger.error(`Failed to download/analyze incoming image from ${phone}.`, err);
+          }
+        }
+        const imageUnderstood = Boolean(imageDescription);
+
+        // Pure media with no caption AND not a successfully-analyzed image —
+        // nothing for the agent to act on. Reply honestly (never go silent)
+        // and skip touching conversation state or Sheets, since nothing about
+        // the customer's need actually changed — except for the one small
+        // piece of state this now tracks (2026-08-09 fix): consecutive
+        // unreadable-media sends in a row, so the reply can degrade (normal
+        // ack → catalog link → human handoff) instead of repeating the exact
+        // same sentence forever. Confirmed live as a real failure mode — see
+        // prompts.js's getMediaNoCaptionReply comment.
+        if (isMedia && !caption && !imageUnderstood) {
           const mediaSession = getSession(message.from);
           const consecutiveUnreadableMedia = (mediaSession.consecutiveUnreadableMedia || 0) + 1;
           updateSession(message.from, { consecutiveUnreadableMedia });
@@ -665,36 +708,107 @@ function createClient() {
           return;
         }
 
-        // Any message that reaches the real agent (plain text, or media WITH
-        // a caption the agent can act on) means the customer got past the
-        // unreadable-media dead end, if they were ever in it — reset so a
-        // later, unrelated media send starts counting fresh instead of
-        // inheriting an old streak.
+        // Any message that reaches the real agent (plain text, a successfully
+        // analyzed image, or media WITH a caption the agent can act on) means
+        // the customer got past the unreadable-media dead end, if they were
+        // ever in it — reset so a later, unrelated media send starts counting
+        // fresh instead of inheriting an old streak.
         if (getSession(message.from).consecutiveUnreadableMedia) {
           updateSession(message.from, { consecutiveUnreadableMedia: 0 });
         }
 
-        const { reply, logEntry, adminNotification, orderHistoryEntry, variantId } = await agent.handleMessage({
+        // A successfully analyzed image's Vision description is passed
+        // separately (imageContext), not merged into text here — llmAgent.js
+        // combines them into what the AI/history actually see (modelText)
+        // while keeping every deterministic intent detector (escalation,
+        // order status, product-image request, ...) looking only at what the
+        // customer actually typed. That split matters: a Vision description
+        // routinely contains the word "صورة" itself (you can't describe a
+        // photo without saying "photo"), which would otherwise falsely
+        // trigger the outgoing product-photo request path on every single
+        // analyzed incoming image. See llmAgent.js's handleMessage for the
+        // full reasoning.
+        const { reply, logEntry, adminNotification, orderHistoryEntry, variantId, productImage } = await agent.handleMessage({
           chatId: message.from,
           phone,
           text: message.body,
           senderName,
+          imageContext: imageUnderstood ? imageDescription : undefined,
         });
 
         let sentReplyText = null;
         if (reply) {
-          // Media with a caption: still process the caption normally, but be
-          // upfront that the media itself wasn't seen.
-          const finalReply = isMedia ? `${getMediaCaptionPrefix(message.type)}${reply}` : reply;
+          // Media with a caption that WASN'T understood (video/ptt/audio, or
+          // an image whose analysis failed): still process the caption
+          // normally, but be upfront that the media itself wasn't seen. A
+          // successfully analyzed image skips this prefix — Sara genuinely
+          // did see it.
+          const finalReply = isMedia && !imageUnderstood ? `${getMediaCaptionPrefix(message.type)}${reply}` : reply;
           sentReplyText = finalReply;
-          await client.sendMessage(message.from, finalReply);
+
+          // 2026-08-09 outgoing product-photo feature (see llmAgent.js's
+          // handleProductImageRequest) — strictly sheet-driven: productImage
+          // only ever carries a URL that came straight from the Products
+          // sheet's Image URL column, never anything guessed or searched.
+          if (productImage && productImage.url) {
+            let sentAsMedia = false;
+            try {
+              // 2026-08-09 — local disk cache (productImageCache.js) replaced
+              // a direct MessageMedia.fromUrl call here. Root cause of the
+              // repeated live timeouts (chatId 22299554107457@lid): genuine
+              // throughput variability on the external image host, not
+              // something a bigger timeout/more retries reliably fixes (the
+              // SAME real URL measured ~3s to 20s+ across repeated fetches).
+              // The cache still does exactly that retry-wrapped fetch on a
+              // MISS (first request for a given product, or after its Sheet
+              // URL changes) — but every request after that is served
+              // straight from local disk, no network involved, so the
+              // external host's reliability only matters once per product.
+              const media = await productImageCache.getProductImageMedia(productImage.productId, productImage.url);
+              if (media) {
+                await client.sendMessage(message.from, media, { caption: finalReply });
+                sentAsMedia = true;
+              }
+            } catch (err) {
+              logger.error(
+                `Failed to fetch/send product image for ${phone} (product: ${productImage.productName}, url: ${productImage.url}).`,
+                err
+              );
+            }
+            if (!sentAsMedia) {
+              // 2026-08-09 addition — confirmed live (chatId
+              // 22299554107457@lid): even with the retry above, the exact
+              // same real image URL measured as low as ~3s and as high as
+              // ~20s+ across repeated direct fetches within the same hour —
+              // genuine external throughput variability on the image host's
+              // side (TTFB was consistently fast; only sustained download
+              // time varied), not a dead link or something fixable by
+              // retrying harder/longer. A customer waiting in real time
+              // shouldn't be made to wait even longer on the chance a 3rd/4th
+              // attempt lands during a good window — instead, always hand her
+              // the direct link as a tappable fallback so she can open the
+              // photo herself regardless of whether WhatsApp's own media
+              // upload succeeded. sentReplyText matches what's actually sent
+              // (feeds chatLogger.logOutgoing + the Leads sheet's Conversation
+              // History below).
+              sentReplyText = `${finalReply}\n(معلش، مقدرتش أبعت الصورة كملف دلوقتي — تقدري تفتحيها من هنا: ${productImage.url})`;
+              await client.sendMessage(message.from, sentReplyText);
+            }
+          } else {
+            await client.sendMessage(message.from, finalReply);
+          }
+
           logger.success(`Reply sent to ${phone}.`);
           const stageAfter = getSession(message.from).stage;
           chatLogger.logOutgoing({
             chatId: message.from,
             phone,
             senderName,
-            message: finalReply,
+            // sentReplyText (not finalReply) — the only one of the two that's
+            // guaranteed to match what actually reached the customer, since
+            // the product-image fallback above can append an apology line
+            // that finalReply alone never reflects.
+            message: sentReplyText,
             stage: stageAfter,
             latencyMs: Date.now() - receivedAt,
             variantId: variantId || null,
