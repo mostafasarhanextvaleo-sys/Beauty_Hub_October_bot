@@ -86,8 +86,8 @@ function gatherSessionStats() {
 // both halves already being logged (2026-08-09 audit finding: "nudge A/B
 // data is logged but never analyzed"). Deliberately ALL-TIME cumulative,
 // unlike the windowed since-last-report deltas above: a cart-recovery
-// conversion can lag its nudge by up to ~24-48h (cartNudgeSecondDelayHours),
-// so a short reporting window would badly undercount attribution, and both
+// conversion can lag its nudge by a day or more, so a short reporting
+// window would badly undercount attribution, and both
 // source files are cheap to re-derive from scratch on every run.
 //
 // Attribution mirrors llmAgent.js's own recoveryNote logic exactly: a chat
@@ -207,6 +207,26 @@ const JSON_SCHEMA = JSON.stringify({
 const AWAIT_CATEGORY_STAGE_NOTE =
   ' Note: with AGENT_MODE=llm live, session.stage="AWAIT_CATEGORY" is llmAgent.js\'s catch-all bucket for "no product recommended yet" (includes brand-new conversations), not literal category-selection blocking — do not raise an action item about a broken category flow from this count alone; the stale24/stale72 figures are the actual staleness signal.';
 
+// 2026-08-14: investigated a report action item claiming cart-recovery
+// nudges were being silently skipped ("11 of 12 pre-checkout sessions stale
+// >24h, only 24 customers ever nudged"). Root cause: isPreCheckout above
+// counts every session that isn't AWAIT_ORDER_CONFIRMATION or CLOSED —
+// including NEW/AWAIT_CATEGORY/AWAIT_ATTRIBUTE ones — but cartRecovery.js's
+// NUDGE_ELIGIBLE_STAGES deliberately excludes those early-funnel stages (a
+// customer who hasn't been shown a product/order details to decide on yet
+// isn't a cart-recovery target, per the 2026-08-11 policy note there).
+// Checked the live sessions_state.json snapshot directly: every session
+// actually in a nudge-eligible stage (RECOMMENDED/AWAIT_ORDER_DETAILS/
+// AWAIT_ORDER_CONFIRMATION-without-orderPlaced) that had gone idle past
+// config.cartNudgeDelayHours already had nudgeSentAt set — none were
+// skipped. Also independently re-derived gatherNudgeAttributionStats'
+// all-time count straight from chat_history.log's raw nudge1_/nudge2_ OUT
+// records and got the same number, so that figure isn't undercounting
+// either. Same false-alarm shape as AWAIT_CATEGORY_STAGE_NOTE above —
+// steering the reporting LLM away from re-raising this exact non-bug.
+const NUDGE_STALE_COUNT_NOTE =
+  ' Note: preCheckout/stale24/stale72 counts every non-CLOSED, non-AWAIT_ORDER_CONFIRMATION session, including NEW/AWAIT_CATEGORY/AWAIT_ATTRIBUTE ones that cartRecovery.js deliberately never nudges (see its NUDGE_ELIGIBLE_STAGES) — a high stale count here does not by itself mean nudges are being skipped; cross-check against the nudge attribution figures below before raising that as an action item.';
+
 // Shared between buildPrompt (LLM-facing) and formatEmailBody (human-facing)
 // so the two never drift into disagreeing about the same numbers.
 function formatNudgeAttributionForDisplay(nudgeAttribution) {
@@ -231,7 +251,7 @@ Stats since the last report (${stats.windowStart} to now, system-generated aggre
 PM2 error log: ${stats.pm2Errors.count} error lines logged. Sample (deduplicate mentally, these are often repeats):
 ${stats.pm2Errors.sample.join('\n') || '(none)'}
 
-Live session snapshot: ${stats.sessions.total} total sessions. Stage distribution: ${JSON.stringify(stats.sessions.stageCounts)}.${stageNote} Of ${stats.sessions.preCheckout} pre-checkout sessions, ${stats.sessions.stale24} are stale >24h and ${stats.sessions.stale72} are stale >72h.
+Live session snapshot: ${stats.sessions.total} total sessions. Stage distribution: ${JSON.stringify(stats.sessions.stageCounts)}.${stageNote} Of ${stats.sessions.preCheckout} pre-checkout sessions, ${stats.sessions.stale24} are stale >24h and ${stats.sessions.stale72} are stale >72h.${NUDGE_STALE_COUNT_NOTE}
 
 Cart-recovery nudge A/B attribution (ALL-TIME cumulative, not scoped to this reporting window — see gatherNudgeAttributionStats' comment for why): ${stats.nudgeAttribution.totalChatsNudged || 0} customers ever nudged. Conversion by variant (converted/sent):
 ${formatNudgeAttributionForDisplay(stats.nudgeAttribution)}
