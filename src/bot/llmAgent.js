@@ -292,10 +292,19 @@ function sanitizeModelOutput(output) {
 // Arabic diacritics vary across model outputs and product-catalog entries for
 // what is otherwise the same word — strip them (plus collapse whitespace) so
 // a name comparison isn't defeated by a stray fatha/kasra either side didn't
-// happen to include.
+// happen to include. A handful of catalog rows (2026-08-13 audit: C142-C144,
+// entered in the same Sheet batch — 12 of 269 live rows total) are also
+// missing the space between a quantity and its unit, e.g. C143's real name
+// "...60mL" has no space before the unit. Sara's replies always use a real
+// space there, so insert one wherever a digit and an Arabic letter are
+// jammed together with none — otherwise that one data-entry quirk fails this
+// check (and logs a false product-id-mismatch warning) on every turn that
+// names the product.
 function normalizeArabicText(text) {
   return text
     .replace(/[ً-ٰٟ]/g, '')
+    .replace(/(\d)([؀-ۿ])/g, '$1 $2')
+    .replace(/([؀-ۿ])(\d)/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -590,7 +599,29 @@ function applyValidatedOutput(session, output, candidates, text) {
   // whatever recommendedProduct's cached .inStock said when it was first
   // set (2026-08-06 fix — see selectCandidatesForTurn's comment for why the
   // cached object can be stale).
-  const recommendedProductLive = recommendedProduct ? productMatcher.getById(recommendedProduct.id) : null;
+  // 2026-08-12 fix — confirmed live (audit found 32/34 sessions affected):
+  // the catalog's ID scheme changed at some point from plain numbers ("18")
+  // to "C"-prefixed SKUs ("C018"). A session pinned before that change holds
+  // the old id forever (nothing ever re-resolves it), so getById(old id)
+  // returns null and this out-of-stock check was treating a perfectly real,
+  // in-stock product as unavailable — silently blocking order confirmation
+  // for a customer who was already mid-checkout. productMatcher.findByIdCandidate
+  // (built for explicit "صورة C102"-style ID mentions, see productIdDetector.js)
+  // already does exactly the right reconstruction — bare digits padded
+  // against whichever alphabetic-prefix+digit-width scheme is actually live
+  // in the catalog — so it's reused here as a fallback rather than
+  // duplicating that logic. When the fallback resolves, recommendedProduct
+  // itself is updated to the live-resolved object (fresh id/price/stock/
+  // imageUrl) so the session self-heals from here on instead of re-hitting
+  // this same fallback every single turn.
+  let recommendedProductLive = recommendedProduct ? productMatcher.getById(recommendedProduct.id) : null;
+  if (recommendedProduct && !recommendedProductLive) {
+    const legacyResolved = productMatcher.findByIdCandidate(recommendedProduct.id);
+    if (legacyResolved) {
+      recommendedProductLive = legacyResolved;
+      recommendedProduct = legacyResolved;
+    }
+  }
   const recommendedProductNowOutOfStock = Boolean(recommendedProduct && (!recommendedProductLive || recommendedProductLive.inStock === false));
 
   const orderConfirmed =
@@ -1066,6 +1097,22 @@ function stripDefiniteArticle(token) {
 // floor that still excludes those near-misses on this real data.
 const MIN_SHARED_TOKENS_FOR_VARIANT = 2;
 
+// A token common across many product names (generic form-words like
+// "كريم"/"غسول") is a weak, unreliable signal for "this names a specific
+// product" — trusting it returns unrelated products. Tuned against the real
+// live catalog (2026-08-12): "كريم" appears in 45 product names, "غسول" in
+// 24, "جل" in 23 (out of 269) — all clearly generic — while real brand/
+// product identifiers like "بلانكي"/"blankie" (1), "ديرماتيك"/"dermatique"
+// (4-6) are rare. 10 sits well below the generic cluster and above the real
+// brand-name cluster on this data. namesNormalized is the caller's own
+// productMatcher.getAllProducts() names (pre-normalized) so this never
+// re-scans/re-normalizes the catalog per token.
+const MAX_PRODUCTS_FOR_DISTINCTIVE_TOKEN = 10;
+function isDistinctiveToken(token, namesNormalized) {
+  const count = namesNormalized.filter((name) => name.includes(token)).length;
+  return count > 0 && count <= MAX_PRODUCTS_FOR_DISTINCTIVE_TOKEN;
+}
+
 // 2026-08-09 addition — confirmed live (chatId 22299554107457@lid): a
 // customer asked for the pinned product's photo, then said "دا الكريم محتاج
 // صوره الجيل" (asking for the GEL variant instead of the pinned CREAM
@@ -1100,9 +1147,25 @@ const MIN_SHARED_TOKENS_FOR_VARIANT = 2;
 // arbitrary product.
 function findNamedAlternativeProduct(text, pinnedProduct) {
   if (!pinnedProduct) return null;
-  const pinnedNameTokens = normalizeArabic(pinnedProduct.name || '')
+  const catalog = productMatcher.getAllProducts();
+  const namesNormalized = catalog.map((p) => normalizeArabic(p.name || ''));
+
+  const pinnedNameTokensRaw = normalizeArabic(pinnedProduct.name || '')
     .split(' ')
     .filter((w) => w.length >= 3);
+  if (pinnedNameTokensRaw.length === 0) return null;
+  // 2026-08-12 fix — confirmed live: for a pinned product whose name is
+  // mostly generic cleanser-boilerplate ("ديرماتيك غسول للبشرة الدهنية
+  // والمختلطة"), the un-filtered version of this check let a completely
+  // unrelated product ("كولا جرا غسول جل للبشرة الدهنية...") count as a
+  // "variant sibling" purely because it also contains "غسول"/"للبشرة
+  // الدهنية" — generic words shared by dozens of unrelated cleansers, not a
+  // real sign of the same product line. Only the pin's OWN distinctive
+  // tokens (e.g. "ديرماتيك") now count toward "is this really a variant of
+  // the pin" — same distinctiveness check used below for the full-catalog
+  // search. Verified this still passes the original gel/cream case (shares
+  // "ديرماتيك"/"dermatique" alone already clears MIN_SHARED_TOKENS_FOR_VARIANT).
+  const pinnedNameTokens = pinnedNameTokensRaw.filter((t) => isDistinctiveToken(t, namesNormalized));
   if (pinnedNameTokens.length === 0) return null;
 
   const messageTokens = normalizeArabic(text)
@@ -1110,11 +1173,10 @@ function findNamedAlternativeProduct(text, pinnedProduct) {
     .filter((w) => w.length >= 3)
     .map(stripDefiniteArticle)
     .map((w) => PRODUCT_TOKEN_ALIASES[w] || w)
-    .filter((w) => !PHOTO_REQUEST_FILLER_WORDS.has(w) && !pinnedNameTokens.includes(w));
+    .filter((w) => !PHOTO_REQUEST_FILLER_WORDS.has(w) && !pinnedNameTokensRaw.includes(w));
   if (messageTokens.length === 0) return null;
 
-  const siblings = productMatcher
-    .getAllProducts()
+  const siblings = catalog
     .filter((p) => p.id !== pinnedProduct.id && p.inStock !== false && p.category === pinnedProduct.category)
     .map((p) => {
       const nameNormalized = normalizeArabic(p.name || '');
@@ -1132,6 +1194,48 @@ function findNamedAlternativeProduct(text, pinnedProduct) {
       best = entry.product;
     }
   }
+  return best;
+}
+
+// 2026-08-12 fix — confirmed live (chatId 22299554107457@lid): a customer
+// asked for a photo of "بلانكي" (an entirely different brand never before
+// mentioned in the conversation) while a "ديرماتيك" product was still
+// pinned from earlier. findNamedAlternativeProduct above only ever
+// considers same-category products that share DISTINCTIVE name tokens WITH
+// THE PIN (real "variant siblings" like the gel/cream pair) — "بلانكي"
+// shares zero tokens with "ديرماتيك", so it never entered that search at
+// all, and handleProductImageRequest silently kept sending the stale pinned
+// product's photo. This is a genuinely different situation from the variant
+// case: the customer is naming a brand-new product, not disambiguating
+// between two forms of the one already pinned — so this searches the FULL
+// catalog (every category, not just the pin's) rather than restricting to
+// siblings-of-the-pin. Reuses isDistinctiveToken (same threshold/reasoning
+// as findNamedAlternativeProduct above) so a generic message word can't
+// false-match an unrelated product here either.
+function findNamedProductInFullCatalog(text, excludeId) {
+  const messageTokens = normalizeArabic(text)
+    .split(' ')
+    .filter((w) => w.length >= 3)
+    .map(stripDefiniteArticle)
+    .map((w) => PRODUCT_TOKEN_ALIASES[w] || w)
+    .filter((w) => !PHOTO_REQUEST_FILLER_WORDS.has(w));
+  if (messageTokens.length === 0) return null;
+
+  const catalog = productMatcher.getAllProducts().filter((p) => p.id !== excludeId && p.inStock !== false);
+  const namesNormalized = catalog.map((p) => normalizeArabic(p.name || ''));
+
+  const distinctiveTokens = messageTokens.filter((t) => isDistinctiveToken(t, namesNormalized));
+  if (distinctiveTokens.length === 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+  catalog.forEach((p, i) => {
+    const score = distinctiveTokens.filter((t) => namesNormalized[i].includes(t)).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  });
   return best;
 }
 
@@ -1164,7 +1268,12 @@ async function handleProductImageRequest({ chatId, phone, trimmedText, session, 
     product = idMentionProduct;
     newlyFound = true;
   } else if (session.recommendedProduct && session.recommendedProduct.id) {
-    const pinned = productMatcher.getById(session.recommendedProduct.id) || session.recommendedProduct;
+    // 2026-08-12: same legacy plain-numeric-id fallback as applyValidatedOutput's
+    // out-of-stock check above — without it, a session pinned before the
+    // catalog's id-scheme change falls all the way back to the stale cached
+    // session.recommendedProduct object (old price/imageUrl/stock), instead
+    // of the live catalog entry findByIdCandidate can still resolve it to.
+    const pinned = productMatcher.getById(session.recommendedProduct.id) || productMatcher.findByIdCandidate(session.recommendedProduct.id) || session.recommendedProduct;
     product = pinned;
 
     // 2026-08-09 fix — confirmed live (chatId 22299554107457@lid), a deeper
@@ -1220,6 +1329,16 @@ async function handleProductImageRequest({ chatId, phone, trimmedText, session, 
     if (alternative) {
       product = alternative;
       newlyFound = true;
+    } else {
+      // 2026-08-12: the message may name a completely different product
+      // (not a same-line variant of the pin) — see
+      // findNamedProductInFullCatalog's header comment for the real bug
+      // this closes.
+      const distinctProduct = findNamedProductInFullCatalog(buildSearchQuery(session, trimmedText), product.id);
+      if (distinctProduct) {
+        product = distinctProduct;
+        newlyFound = true;
+      }
     }
   }
 
