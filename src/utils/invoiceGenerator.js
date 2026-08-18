@@ -35,7 +35,7 @@ function formatEgp(amount) {
 // printed straight from whatever browser opens it (Ctrl+P) — no PDF, no
 // storage. RTL/Arabic shaping is handled natively by that browser, same as
 // any other Arabic web page.
-function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal, shippingFeeOverrideEGP, shippingMethod, quantity }) {
+function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal, shippingFeeOverrideEGP, shippingMethod, quantity, locationLink }) {
   const productTotalNum = parsePriceToNumber(productTotal);
   // 2026-08-19 addition — confirmed live (chatId 88876412584107@lid, phone
   // 201055990502): this line-item table used to hardcode "1" as the
@@ -89,50 +89,130 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
     : 'هيتم تأكيدها من الفريق';
   const grandTotal = productTotalNum + shippingFeeNum;
 
+  // 2026-08-19 design refresh (owner-requested: "clean, modern, professional,
+  // mobile-friendly") + location-link display (see googleSheets.js's new
+  // "Customer Location Link" column / llmAgent.js's session.orderData.
+  // locationLink). Still zero-storage/rendered-fresh, still self-contained
+  // (no external fonts/CDN — this is opened straight from a WhatsApp link on
+  // a customer's phone, so it must never depend on a third-party request
+  // succeeding), still print-friendly via the browser's own Ctrl+P (now with
+  // a visible in-page button for it, hidden in the print output itself via
+  // @media print). All pricing/shipping computation above is unchanged —
+  // this only touches how it's presented.
+  const locationLinkHtml = locationLink
+    ? `<br><a class="location-link" href="${escapeHtml(locationLink)}" target="_blank" rel="noopener">📍 عرض موقع التوصيل</a>`
+    : '';
+
   return `<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>فاتورة ${escapeHtml(invoiceNumber)} — ${escapeHtml(STORE_NAME)}</title>
 <style>
+  :root {
+    --brand: #d6336c;
+    --brand-dark: #a61e4d;
+    --ink: #2b2530;
+    --muted: #8a8391;
+    --line: #f0e2e7;
+    --bg: #fbf4f6;
+    --card: #ffffff;
+  }
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl; color: #222; margin: 0; }
-  .header { background: #28333e; color: #fff; padding: 28px 36px; }
-  .header h1 { margin: 0; font-size: 22px; }
-  .header .sub { opacity: .75; font-size: 12px; margin-top: 6px; }
-  .meta { display: flex; justify-content: space-between; gap: 24px; padding: 22px 36px; }
-  .meta .block { font-size: 13px; line-height: 1.9; }
-  .meta .label { color: #888; font-size: 11px; display: block; }
-  table.items { width: calc(100% - 72px); margin: 0 36px; border-collapse: collapse; font-size: 13px; }
-  table.items th { background: #f2f4f6; text-align: right; padding: 10px 12px; border-bottom: 2px solid #28333e; }
-  table.items td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; }
-  .totals { width: 260px; margin: 18px 36px 0 auto; font-size: 13px; }
-  .totals tr td { padding: 6px 4px; }
-  .totals tr.grand td { font-weight: bold; font-size: 15px; border-top: 2px solid #28333e; padding-top: 10px; }
-  .footer { padding: 28px 36px; font-size: 11px; color: #999; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    direction: rtl;
+    color: var(--ink);
+    background: var(--bg);
+    padding: 32px 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    max-width: 640px;
+    margin: 0 auto;
+    background: var(--card);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(166, 30, 77, .08);
+  }
+  .header { background: linear-gradient(135deg, var(--brand), var(--brand-dark)); color: #fff; padding: 30px 30px 26px; }
+  .header h1 { margin: 0; font-size: 21px; font-weight: 700; }
+  .header .sub { opacity: .85; font-size: 12px; margin-top: 6px; }
+  .body-pad { padding: 26px 30px 8px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 18px 30px; padding-bottom: 6px; }
+  .meta .block { font-size: 13px; line-height: 1.85; min-width: 150px; }
+  .meta .label { color: var(--muted); font-size: 11px; display: block; margin-bottom: 2px; }
+  .location-link { display: inline-block; margin-top: 4px; font-size: 12px; color: var(--brand-dark); text-decoration: none; font-weight: 600; }
+  .location-link:hover { text-decoration: underline; }
+  .table-wrap { overflow-x: auto; margin-top: 14px; border-radius: 10px; border: 1px solid var(--line); }
+  table.items { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 420px; }
+  table.items th { background: #fbeef2; text-align: right; padding: 11px 12px; font-weight: 600; color: var(--brand-dark); border-bottom: 1px solid var(--line); }
+  table.items td { padding: 12px; border-bottom: 1px solid var(--line); }
+  table.items tr:last-child td { border-bottom: none; }
+  .totals { width: 100%; max-width: 300px; margin: 18px 0 0 auto; font-size: 13px; }
+  .totals .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 0; }
+  .totals .row .val { white-space: nowrap; }
+  .totals .row.grand { margin-top: 6px; padding-top: 14px; border-top: 2px solid var(--brand); }
+  .totals .row.grand .lbl, .totals .row.grand .val { font-weight: 700; font-size: 17px; color: var(--brand-dark); }
+  .print-btn {
+    display: inline-flex; align-items: center; gap: 6px; margin: 22px 0 4px;
+    background: var(--brand); color: #fff; border: none; padding: 10px 22px;
+    border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .print-btn:hover { background: var(--brand-dark); }
+  .footer { padding: 20px 30px 26px; font-size: 11px; color: var(--muted); text-align: center; border-top: 1px solid var(--line); margin-top: 16px; }
+  @media (max-width: 480px) {
+    body { padding: 0; }
+    .card { border-radius: 0; box-shadow: none; }
+    .header { padding: 24px 18px; }
+    .body-pad { padding: 20px 18px 4px; }
+    .footer { padding: 18px; }
+    table.items th, table.items td { padding: 9px; font-size: 12px; }
+  }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .card { box-shadow: none; border-radius: 0; max-width: 100%; }
+    .print-btn { display: none; }
+  }
 </style>
 </head>
 <body>
-  <div class="header">
-    <h1>${escapeHtml(STORE_NAME)} 🌸</h1>
-    <div class="sub">فاتورة طلب — تم إصدارها تلقائياً</div>
+  <div class="card">
+    <div class="header">
+      <h1>${escapeHtml(STORE_NAME)} 🌸</h1>
+      <div class="sub">فاتورة طلب — تم إصدارها تلقائياً</div>
+    </div>
+    <div class="body-pad">
+      <div class="meta">
+        <div class="block"><span class="label">رقم الفاتورة</span>${escapeHtml(invoiceNumber)}</div>
+        <div class="block"><span class="label">التاريخ</span>${escapeHtml(dateLabel)}</div>
+        <div class="block">
+          <span class="label">بيانات العميلة</span>
+          ${escapeHtml(customerName) || 'غير محدد'}<br>
+          ${escapeHtml(phone) || 'غير محدد'}<br>
+          ${escapeHtml(address) || 'العنوان غير مسجل بعد'}${locationLinkHtml}
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="items">
+          <thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+          <tbody>
+            <tr><td>${escapeHtml(products) || 'غير محدد'}</td><td>${quantityNum}</td><td>${formatEgp(unitPriceNum)}</td><td>${formatEgp(productTotalNum)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="totals">
+        <div class="row"><span class="lbl">إجمالي المنتجات</span><span class="val">${formatEgp(productTotalNum)}</span></div>
+        <div class="row"><span class="lbl">مصاريف الشحن</span><span class="val">${shippingLabel}</span></div>
+        <div class="row grand"><span class="lbl">الإجمالي الكلي</span><span class="val">${formatEgp(grandTotal)}</span></div>
+      </div>
+      <button class="print-btn" onclick="window.print()">🖨️ طباعة الفاتورة</button>
+    </div>
+    <div class="footer">شكراً لثقتك في ${escapeHtml(STORE_NAME)} 🌸 — الفاتورة دي اتولدت أوتوماتيك، لو في أي استفسار تواصلي مع فريقنا.</div>
   </div>
-  <div class="meta">
-    <div class="block"><span class="label">رقم الفاتورة</span>${escapeHtml(invoiceNumber)}</div>
-    <div class="block"><span class="label">التاريخ</span>${escapeHtml(dateLabel)}</div>
-    <div class="block"><span class="label">بيانات العميلة</span>${escapeHtml(customerName) || 'غير محدد'}<br>${escapeHtml(phone) || 'غير محدد'}<br>${escapeHtml(address) || 'العنوان غير مسجل بعد'}</div>
-  </div>
-  <table class="items">
-    <thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
-    <tbody>
-      <tr><td>${escapeHtml(products) || 'غير محدد'}</td><td>${quantityNum}</td><td>${formatEgp(unitPriceNum)}</td><td>${formatEgp(productTotalNum)}</td></tr>
-    </tbody>
-  </table>
-  <table class="totals">
-    <tr><td>إجمالي المنتجات</td><td>${formatEgp(productTotalNum)}</td></tr>
-    <tr><td>مصاريف الشحن</td><td>${shippingLabel}</td></tr>
-    <tr class="grand"><td>الإجمالي الكلي</td><td>${formatEgp(grandTotal)}</td></tr>
-  </table>
-  <div class="footer">شكراً لثقتك في ${escapeHtml(STORE_NAME)} 🌸 — الفاتورة دي اتولدت أوتوماتيك، لو في أي استفسار تواصلي مع فريقنا.</div>
 </body>
 </html>`;
 }

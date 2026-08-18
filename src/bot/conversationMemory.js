@@ -216,7 +216,7 @@ function getSession(chatId) {
       secondNudgeSentAt: null,
       orderConfirmationAttempts: 0,
       // --- LLM agent (src/bot/llmAgent.js) fields — unused/dormant in 'rules' mode ---
-      orderData: { customerName: null, deliveryAddress: null, altPhone: null },
+      orderData: { customerName: null, deliveryAddress: null, altPhone: null, locationLink: null },
       noProgressTurns: 0,
       humanHandover: false,
       // Timestamp of the most recent human handoff (explicit request or the

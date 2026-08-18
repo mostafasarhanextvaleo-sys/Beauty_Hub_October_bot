@@ -354,6 +354,15 @@ const CONFIRMED_ORDERS_HEADERS = [
   // pre-existing row reads as 1 everywhere this is consumed — never treated
   // as "no quantity"/0.
   'Quantity',
+  // 2026-08-19 addition, same pure column-ADDITION migration pattern as the
+  // three columns above. Written once, at order-creation time, by
+  // appendConfirmedOrder, from whatever WhatsApp live-location share or
+  // pasted Google Maps link the customer sent this session (see
+  // whatsapp/client.js's location detection and llmAgent.js's
+  // session.orderData.locationLink) — best-effort only, never asked as a
+  // hard requirement and never blocks order confirmation if missing. Blank
+  // on any order where the customer never shared one.
+  'Customer Location Link',
 ];
 
 const FEEDBACK_HEADERS = ['Date', 'Customer Name', 'Phone', 'Rating', 'Comments'];
@@ -1676,7 +1685,7 @@ async function formatConfirmedOrdersTab() {
 // created at all — it would just leave the Shipping Method cell blank
 // (read as 'Standard' everywhere it's consumed, the safe default) rather
 // than losing or corrupting the order.
-async function appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod, quantity }) {
+async function appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod, quantity, locationLink }) {
   if (!enabled) return null;
 
   // Explicit idempotency check — see ORDER_DEDUP_WINDOW_MS above. No
@@ -1729,17 +1738,17 @@ async function appendConfirmedOrder({ customerName, phone, address, products, to
   const rowNumber = extractRowNumber(result.data.updates && result.data.updates.updatedRange);
 
   if (rowNumber) {
-    // Shipping Method and Quantity (2026-08-19) are adjacent columns
-    // (M:N) — written in one follow-up call rather than two separate ones.
-    // Same "never let a secondary write risk the core order row" reasoning
-    // as Invoice Link/Print Invoice above: a failure here is logged but the
-    // order itself (already appended to A:F) is completely unaffected —
-    // the cells just read blank, which every downstream reader already
-    // treats as the safe default (Standard / 1 unit).
+    // Shipping Method, Quantity, and Customer Location Link (2026-08-19) are
+    // adjacent columns (M:O) — written in one follow-up call rather than
+    // separate ones. Same "never let a secondary write risk the core order
+    // row" reasoning as Invoice Link/Print Invoice above: a failure here is
+    // logged but the order itself (already appended to A:F) is completely
+    // unaffected — the cells just read blank, which every downstream reader
+    // already treats as the safe default (Standard / 1 unit / no location).
     const shippingMethodColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Shipping Method');
-    const quantityColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Quantity');
+    const locationLinkColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Customer Location Link');
     const startCol = columnLetter(shippingMethodColIndex + 1);
-    const endCol = columnLetter(quantityColIndex + 1);
+    const endCol = columnLetter(locationLinkColIndex + 1);
     const quantityValue = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
     try {
       await sheetsCall(() =>
@@ -1748,14 +1757,14 @@ async function appendConfirmedOrder({ customerName, phone, address, products, to
             spreadsheetId: config.googleSheetId,
             range: `${CONFIRMED_ORDERS_SHEET_NAME}!${startCol}${rowNumber}:${endCol}${rowNumber}`,
             valueInputOption: 'RAW',
-            requestBody: { values: [[shippingMethod === 'express' ? 'Express' : 'Standard', quantityValue]] },
+            requestBody: { values: [[shippingMethod === 'express' ? 'Express' : 'Standard', quantityValue, locationLink || '']] },
           },
           { timeout: REQUEST_TIMEOUT_MS }
         )
       );
     } catch (err) {
       logger.error(
-        `Failed to write Shipping Method/Quantity for Confirmed_Orders row ${rowNumber} — the order itself was still logged normally, but those cells may read blank (treated as Standard/1 unit everywhere they're consumed).`,
+        `Failed to write Shipping Method/Quantity/Customer Location Link for Confirmed_Orders row ${rowNumber} — the order itself was still logged normally, but those cells may read blank (treated as Standard/1 unit/no location everywhere they're consumed).`,
         err
       );
     }
@@ -2139,7 +2148,7 @@ async function getConfirmedOrderByRow(rowNumber) {
     sheetsClient.spreadsheets.values.get(
       {
         spreadsheetId: config.googleSheetId,
-        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A${rowNumber}:N${rowNumber}`,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A${rowNumber}:O${rowNumber}`,
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
@@ -2161,7 +2170,11 @@ async function getConfirmedOrderByRow(rowNumber) {
   // unparseable reads as 1, never 0 or NaN.
   const parsedQuantity = parseInt(row[13], 10);
   const quantity = Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
-  return { date, customerName, phone, address, products, totalPrice, shippingFeeOverrideEGP, shippingMethod, quantity };
+  // Column O (index 14) — see 'Customer Location Link' header comment above.
+  // Blank on any pre-existing or never-shared-location order — the invoice
+  // template simply omits the line rather than showing an empty one.
+  const locationLink = String(row[14] || '').trim();
+  return { date, customerName, phone, address, products, totalPrice, shippingFeeOverrideEGP, shippingMethod, quantity, locationLink };
 }
 
 // phone number lives in column C (index 2) of the Leads sheet; earliest row

@@ -265,6 +265,14 @@ const RECOGNIZED_MEDIA_TYPES = new Set([
 // whole fetch-or-serve-from-disk path.
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 15000;
 
+// 2026-08-19 addition — matches a pasted Google Maps link in ordinary chat
+// text (a customer typing/pasting one instead of sharing live location via
+// WhatsApp's own location-share UI). Deliberately permissive on the domain
+// variants (google.com/maps, maps.google.com, the maps.app.goo.gl and
+// goo.gl/maps short-link forms) since real customers use whichever their
+// phone/browser happened to generate.
+const GOOGLE_MAPS_LINK_PATTERN = /https?:\/\/(www\.)?(google\.[a-z.]+\/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl\/maps)\S*/i;
+
 let status = 'starting';
 let client = null;
 
@@ -667,6 +675,27 @@ function createClient() {
         // implicated in the 2026-07-30 wedged-renderer incident elsewhere in
         // this file, hence the explicit timeout) degrades safely instead of
         // ever leaving the customer without a reply.
+        // 2026-08-19 addition — delivery-location capture (owner-requested,
+        // for accurate delivery — see llmAgent.js's session.orderData.
+        // locationLink and googleSheets.js's new "Customer Location Link"
+        // column). Deterministic, never something the LLM infers: a real
+        // WhatsApp live/current-location share arrives as message.type ===
+        // 'location' with message.location.{latitude,longitude} (see
+        // whatsapp-web.js's Location structure) — no download/API call
+        // needed, unlike image handling above. A customer who pastes a
+        // Google Maps link as plain text instead of sharing live location is
+        // caught the same way, from ordinary message.body.
+        let locationLink = null;
+        if (message.type === 'location' && message.location) {
+          const { latitude, longitude } = message.location;
+          if (typeof latitude === 'number' && typeof longitude === 'number') {
+            locationLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+          }
+        } else if (message.body) {
+          const mapsMatch = message.body.match(GOOGLE_MAPS_LINK_PATTERN);
+          if (mapsMatch) locationLink = mapsMatch[0];
+        }
+
         let imageDescription = null;
         // 2026-08-18 addition — only populated when this customer is
         // currently answering Sara's "not available, send me a photo" ask
@@ -711,7 +740,7 @@ function createClient() {
         // ack → catalog link → human handoff) instead of repeating the exact
         // same sentence forever. Confirmed live as a real failure mode — see
         // prompts.js's getMediaNoCaptionReply comment.
-        if (isMedia && !caption && !imageUnderstood) {
+        if (isMedia && !caption && !imageUnderstood && !locationLink) {
           // 2026-08-18 — this path exits before ever reaching agent.handleMessage
           // (where the normal awaitingUnlistedProductDetails capture lives), so
           // a bare, caption-less photo sent as the answer to "send me a photo"
@@ -785,6 +814,7 @@ function createClient() {
           senderName,
           imageContext: imageUnderstood ? imageDescription : undefined,
           unlistedProductImageUrl: unlistedProductImageUrl || undefined,
+          locationLink: locationLink || undefined,
         });
 
         let sentReplyText = null;
@@ -902,6 +932,9 @@ function createClient() {
               // the dedicated structured column, not what makes the total itself
               // correct.
               quantity: logEntry && logEntry.quantity,
+              // 2026-08-19 addition — see llmAgent.js's buildLogEntryAndNotification,
+              // which sets this on logEntry from applied.orderData.locationLink.
+              locationLink: logEntry && logEntry.locationLink,
             })
             .catch((err) => {
               logger.error('Campaign Confirmed_Orders logging failed (order itself was still logged normally).', err);

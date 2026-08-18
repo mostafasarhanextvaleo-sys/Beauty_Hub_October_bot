@@ -1049,6 +1049,11 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
         // "Quantity" Confirmed_Orders column. Always a positive integer
         // (resolveQuantity above guarantees that, default 1).
         quantity,
+        // 2026-08-19 addition — same threading purpose, for the new
+        // "Customer Location Link" Confirmed_Orders column. Best-effort;
+        // '' (not null) when never provided, matching every other optional
+        // string field logEntry already carries.
+        locationLink: applied.orderData.locationLink || '',
         orderStatus: 'Completed',
         notes: `تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)${recoveryNote}`,
       },
@@ -1640,7 +1645,7 @@ async function handleProductImageRequest({ chatId, phone, trimmedText, session, 
   };
 }
 
-async function handleMessage({ chatId, phone, text, senderName, imageContext, unlistedProductImageUrl }) {
+async function handleMessage({ chatId, phone, text, senderName, imageContext, unlistedProductImageUrl, locationLink }) {
   const session = getSession(chatId);
   // Captured before anything this turn touches the session — updateSession()
   // stamps a fresh updatedAt on every call below, so this is the one true
@@ -1665,11 +1670,23 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext, un
   // by trimmedText. See visionService.js for why the vision model itself
   // never talks to the customer directly — this is still just a string
   // flowing through the exact same guardrails as typed text.
-  const modelText = imageContext
+  let modelText = imageContext
     ? trimmedText
       ? `${trimmedText}\n[صورة مرفقة من العميلة — وصف تلقائي للصورة: ${imageContext}]`
       : `[صورة مرفقة من العميلة — وصف تلقائي للصورة: ${imageContext}]`
     : trimmedText;
+  // 2026-08-19 addition — same bracketed-marker pattern as imageContext just
+  // above: locationLink is only ever truthy here when whatsapp/client.js
+  // detected a NEW live-location share or pasted Maps link THIS turn (never
+  // a carried-over one — see applied.orderData.locationLink below for the
+  // sticky version), so this only fires once, on the actual sharing turn,
+  // letting Sara react naturally ("تمام، استلمت موقعك 🌸") instead of the
+  // turn looking like empty/unrelated text to the model.
+  if (locationLink) {
+    modelText += modelText
+      ? `\n[العميلة شاركت موقعها الحالي على واتساب: ${locationLink}]`
+      : `[العميلة شاركت موقعها الحالي على واتساب: ${locationLink}]`;
+  }
 
   // Deterministic Product ID/SKU recognition (2026-08-10) — a customer
   // quoting a catalog ID/SKU directly (from the new public catalog page, or
@@ -2142,6 +2159,19 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext, un
   }
 
   let applied = applyValidatedOutput(session, validated, candidates, trimmedText);
+
+  // 2026-08-19 — customer delivery-location capture (owner-requested).
+  // Deliberately NOT part of validateModelOutput/applyValidatedOutput's
+  // model-extracted order_data fields — a WhatsApp live-location share or a
+  // pasted Google Maps link is detected deterministically in
+  // whatsapp/client.js (never something the LLM infers from prose) and
+  // handed in here as locationLink, same "code owns the fact, not the
+  // model" split as price/shipping/quantity elsewhere in this file. Sticky
+  // across turns like every other orderData field (carries forward once
+  // captured; a turn with no new location leaves the existing one alone),
+  // and deliberately best-effort only — never required for allFieldsPresent/
+  // order confirmation, matching the owner's "whenever provided" framing.
+  applied.orderData.locationLink = locationLink || (session.orderData && session.orderData.locationLink) || null;
 
   // A downgraded SPECIALIST_REFERRAL/CUSTOMER_REQUEST/LONG_CONVERSATION_UNRESOLVED
   // means validated.reply_text may still be the model's (now-rejected)

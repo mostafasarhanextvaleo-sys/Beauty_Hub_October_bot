@@ -15,10 +15,21 @@ const { containsWordSequence } = require('../utils/helpers');
 // returns the FIRST (most specific) zone whose keywords appear, never the
 // broadest one that happens to also match.
 const SHIPPING_ZONES = [
+  // 2026-08-19 (store owner directive): Same-Day Express moved here from the
+  // old broad "القاهرة والجيزة" catch-all below — express is now EXCLUSIVELY
+  // a October/Sheikh Zayed-area option (within ~35 min drive of October),
+  // not a general Cairo/Giza one. Confirmed live: a customer in October was
+  // correctly offered/charged express, which is right; the OLD data model
+  // would have equally offered it to a customer in, say, Nasr City or Maadi
+  // (matched via cairo_giza below), which the owner does not want. Same flat
+  // "fixed alternative to standard, not an add-on" shape as before — see
+  // expressFeeEGP's original comment on cairo_giza for that reasoning, only
+  // the zone it lives on changed.
   {
     id: 'october',
     name: 'أكتوبر – حدائق أكتوبر – الشيخ زايد',
     feeEGP: 50,
+    expressFeeEGP: 100,
     keywords: ['اكتوبر', 'حدائق اكتوبر', 'الشيخ زايد', 'زايد', '6 اكتوبر', 'سادس اكتوبر'],
   },
   {
@@ -95,22 +106,22 @@ const SHIPPING_ZONES = [
     keywords: ['جنوب سيناء', 'شرم الشيخ', 'دهب', 'نويبع', 'طابا'],
   },
   // Deliberately LAST and broadest — every specific Greater-Cairo tier above
-  // (helwan, shubra_marg, tagamoa) is checked first, so a Nasr City/Maadi/
-  // Dokki-style address correctly falls through to here rather than one of
-  // those more specific (and differently priced) tiers.
+  // (helwan, shubra_marg, tagamoa, october) is checked first, so a Nasr
+  // City/Maadi/Dokki-style address correctly falls through to here rather
+  // than one of those more specific (and differently priced) tiers.
   //
-  // 2026-08-19 (store owner directive): Same-Day Express is a flat, fixed
-  // alternative to this zone's standard 65 EGP fee — NOT an extra add-on
-  // charged on top of it — available only in this one zone. expressFeeEGP is only
-  // ever set on this zone object; every downstream reader (buildShippingZoneSection
-  // below, and matchShippingZone's return value) treats its absence/null as
-  // "no express option here," so Cairo/Giza doesn't need a parallel
-  // allow-list to stay in sync with.
+  // 2026-08-19 (store owner directive, revised): Same-Day Express used to
+  // live on this zone (any Cairo/Giza address), but is now October/Zayed-only
+  // — see the 'october' zone above. Deliberately no expressFeeEGP here
+  // anymore: a Nasr City/Maadi/Dokki/etc. address is real Cairo/Giza but
+  // outside the ~35-min October/Zayed radius the owner defined, so it must
+  // only ever get standard shipping. matchShippingZone/buildShippingZoneSection
+  // already treat a missing expressFeeEGP as "no express option here" with
+  // no separate allow-list needed — removing it here is the whole fix.
   {
     id: 'cairo_giza',
     name: 'القاهرة والجيزة',
     feeEGP: 65,
-    expressFeeEGP: 100,
     keywords: [
       'القاهرة',
       'قاهرة',
