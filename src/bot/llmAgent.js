@@ -219,16 +219,32 @@ function isPhotoAvailabilityHallucination(replyText) {
 // toward over-catching (a false positive just asks the customer one extra
 // confirming question, always safe) over under-catching (a false negative
 // means telling a customer an order went through when it didn't).
+// 2026-08-18 — possessive-suffix ("طلبك"/"اوردرك", "your order") variants
+// added alongside the pre-existing definite-article ("الطلب"/"الاوردر", "the
+// order") ones. Confirmed live, chatId 35351993254096@lid (phone
+// 201156630487): the model said "تم تأكيد طلبك لقلم كحل ثابت بريتي وومن بسعر
+// 70 جنيه. هبعتلك الفاتورة دلوقتي!" — a false confirmation claim (order_data.
+// confirmed was never actually true, nothing was ever written to
+// Confirmed_Orders) that reached the customer verbatim, TWICE, because
+// "تم تأكيد طلبك" isn't a substring of "تم تأكيد الطلب" (different word:
+// "طلبك" vs "الطلب") and so slipped straight past this exact list. The
+// analogous possessive form ("تم تسجيل طلبك") was already present for the
+// "تسجيل" (register) verb — this was purely a missed variant for "تأكيد"
+// (confirm), not a deliberate scope decision.
 const ORDER_CONFIRMATION_CLAIM_WORDS = [
   'هأكدلك',
   'هاكدلك',
   'تم تأكيد الطلب',
   'تم تأكيد الاوردر',
+  'تم تأكيد طلبك',
+  'تم تأكيد اوردرك',
   'تم تسجيل طلبك',
   'هسجل طلبك',
   'اتسجل طلبك',
   'حجزتلك الطلب',
   'اكدتلك الطلب',
+  'اكدتلك طلبك',
+  'اكدتلك اوردرك',
   'تم تأكيد حجزك',
 ].map(normalizeArabic);
 
