@@ -23,3 +23,4 @@ training/local_model/
 training/tokenized_dataset/
 training/lora_out/
 public/images_cache/
+public/unlisted_product_requests/

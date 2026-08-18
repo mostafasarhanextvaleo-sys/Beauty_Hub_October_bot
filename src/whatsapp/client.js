@@ -6,6 +6,7 @@ const agent = require('../bot/agent');
 const googleSheets = require('../services/googleSheets');
 const visionService = require('../services/visionService');
 const productImageCache = require('../services/productImageCache');
+const unlistedProductImageStore = require('../services/unlistedProductImageStore');
 const { sanitizePhoneNumber, truncate, normalizeArabic, sleep, withTimeout } = require('../utils/helpers');
 const chatLogger = require('../utils/chatLogger');
 const { runExclusive } = require('../utils/chatLock');
@@ -667,6 +668,14 @@ function createClient() {
         // this file, hence the explicit timeout) degrades safely instead of
         // ever leaving the customer without a reply.
         let imageDescription = null;
+        // 2026-08-18 addition — only populated when this customer is
+        // currently answering Sara's "not available, send me a photo" ask
+        // (session.awaitingUnlistedProductDetails, set by llmAgent.js). Saved
+        // from the SAME already-downloaded `media` below rather than a
+        // second downloadMedia() call, so a real photo isn't fetched twice
+        // through the same Puppeteer renderer for one customer turn.
+        let unlistedProductImageUrl = '';
+        const awaitingUnlistedProductPhoto = Boolean(getSession(message.from).awaitingUnlistedProductDetails);
         if (message.type === 'image') {
           try {
             const media = await withTimeout(
@@ -680,6 +689,12 @@ function createClient() {
                 mimeType: media.mimetype || 'image/jpeg',
                 caption,
               });
+              if (awaitingUnlistedProductPhoto) {
+                unlistedProductImageUrl = unlistedProductImageStore.saveInboundImage({
+                  base64Data: media.data,
+                  mimeType: media.mimetype || 'image/jpeg',
+                });
+              }
             }
           } catch (err) {
             logger.error(`Failed to download/analyze incoming image from ${phone}.`, err);
@@ -697,6 +712,20 @@ function createClient() {
         // same sentence forever. Confirmed live as a real failure mode — see
         // prompts.js's getMediaNoCaptionReply comment.
         if (isMedia && !caption && !imageUnderstood) {
+          // 2026-08-18 — this path exits before ever reaching agent.handleMessage
+          // (where the normal awaitingUnlistedProductDetails capture lives), so
+          // a bare, caption-less photo sent as the answer to "send me a photo"
+          // would otherwise be saved to disk (see unlistedProductImageUrl above)
+          // but never logged to the sheet, nor clear the flag, if Vision also
+          // happened to fail on it. Log it here directly instead — the photo
+          // itself is real signal regardless of whether Vision could describe
+          // it, and the customer still gets the normal graceful reply below.
+          if (awaitingUnlistedProductPhoto && unlistedProductImageUrl) {
+            updateSession(message.from, { awaitingUnlistedProductDetails: false });
+            googleSheets
+              .appendUnlistedProductRequest({ phone, customerName: senderName, productDetails: '', imageUrl: unlistedProductImageUrl })
+              .catch((err) => logger.error(`Failed to log unlisted product request (photo-only) for ${phone}.`, err));
+          }
           const mediaSession = getSession(message.from);
           const consecutiveUnreadableMedia = (mediaSession.consecutiveUnreadableMedia || 0) + 1;
           updateSession(message.from, { consecutiveUnreadableMedia });
@@ -755,6 +784,7 @@ function createClient() {
           text: message.body,
           senderName,
           imageContext: imageUnderstood ? imageDescription : undefined,
+          unlistedProductImageUrl: unlistedProductImageUrl || undefined,
         });
 
         let sentReplyText = null;

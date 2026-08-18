@@ -358,6 +358,16 @@ const CONFIRMED_ORDERS_HEADERS = [
 
 const FEEDBACK_HEADERS = ['Date', 'Customer Name', 'Phone', 'Rating', 'Comments'];
 
+// 2026-08-18 — unlisted-product-request logging (owner-requested). When a
+// customer asks for a product not in the catalog and then gives its
+// name/specs (and optionally a photo) in reply to Sara's new "not available
+// right now, but tell me more" line (see llmSystemPrompt.js rule 8 and
+// llmAgent.js's awaitingUnlistedProductDetails flag), that gets logged here
+// for staff to source/restock from, instead of silently disappearing once
+// the conversation moves on.
+const UNLISTED_PRODUCT_REQUESTS_SHEET_NAME = 'Unlisted_Product_Requests';
+const UNLISTED_PRODUCT_REQUESTS_HEADERS = ['Timestamp', 'Phone Number', 'Customer Name', 'Product Name & Specs', 'Image URL'];
+
 // A row-per-offer table (2026-08-02) — replaced the old single fixed-cell
 // control panel (one CAMPAIGN_STATUS/OFFER_TEXT/TEST_TRIGGER for the whole
 // tab) so the owner can run up to 5 independent campaigns at once instead of
@@ -733,6 +743,9 @@ async function ensureCrmTabs() {
   if (!existingTitles.includes(TRUSTED_CLIENTS_SHEET_NAME)) {
     requests.push({ addSheet: { properties: { title: TRUSTED_CLIENTS_SHEET_NAME } } });
   }
+  if (!existingTitles.includes(UNLISTED_PRODUCT_REQUESTS_SHEET_NAME)) {
+    requests.push({ addSheet: { properties: { title: UNLISTED_PRODUCT_REQUESTS_SHEET_NAME } } });
+  }
   if (requests.length > 0) {
     await sheetsClient.spreadsheets.batchUpdate(
       { spreadsheetId: config.googleSheetId, requestBody: { requests } },
@@ -744,6 +757,7 @@ async function ensureCrmTabs() {
   await ensureHeaderRow(TARGETED_CLIENTS_SHEET_NAME, TARGETED_CLIENTS_HEADERS);
   await ensureHeaderRow(CONFIRMED_ORDERS_SHEET_NAME, CONFIRMED_ORDERS_HEADERS);
   await ensureHeaderRow(FEEDBACK_SHEET_NAME, FEEDBACK_HEADERS);
+  await ensureHeaderRow(UNLISTED_PRODUCT_REQUESTS_SHEET_NAME, UNLISTED_PRODUCT_REQUESTS_HEADERS);
   await ensureTrustedClientsSchema();
   await ensureOffersCampaignSeeded();
 }
@@ -2049,6 +2063,36 @@ async function appendFeedback({ customerName, phone, rating, comments }) {
   return { rowNumber };
 }
 
+// Appends one unlisted-product-request row — same shape/pattern as
+// appendFeedback above. Called by llmAgent.js's handleMessage once the
+// customer's next reply after Sara's "not available, tell me the name/specs"
+// line has been captured (see awaitingUnlistedProductDetails).
+async function appendUnlistedProductRequest({ phone, customerName, productDetails, imageUrl }) {
+  if (!enabled) return null;
+  const row = sanitizeRowForSheet([
+    new Date().toISOString(),
+    phone || '',
+    customerName || '',
+    productDetails || '',
+    imageUrl || '',
+  ]);
+  const result = await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.append(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${UNLISTED_PRODUCT_REQUESTS_SHEET_NAME}!A:E`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [row] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+  const rowNumber = extractRowNumber(result.data.updates && result.data.updates.updatedRange);
+  logger.success(`Unlisted product request logged for ${phone} (row ${rowNumber}).`);
+  return { rowNumber };
+}
+
 // Pure formatting (same dataTableStyleRequests shared look as the other CRM
 // tabs) — safe to re-run anytime, never touches cell content.
 async function formatFeedbackTab() {
@@ -2704,4 +2748,6 @@ module.exports = {
   getTrustedClientsRows,
   upsertTrustedClient,
   computeCustomerTier,
+  UNLISTED_PRODUCT_REQUESTS_SHEET_NAME,
+  appendUnlistedProductRequest,
 };

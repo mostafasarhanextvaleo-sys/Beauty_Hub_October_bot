@@ -149,6 +149,27 @@ function hasClinicalSeverityKeyword(text) {
 const NORMAL_CONSULTATION_FALLBACK =
   'تمام، ده موضوع عادي جدًا وهساعدك فيه زي أي استشارة تانية 💛 لو حابة تضيفي أي تفاصيل زي روتين العناية الحالي أو الميزانية التقريبية، هقدر أرشحلك أنسب منتج من عندنا فورًا.';
 
+// 2026-08-18 — downgrade-retry schema, used ONLY for the one-shot retry
+// right after a SPECIALIST_REFERRAL/CUSTOMER_REQUEST/LONG_CONVERSATION_UNRESOLVED
+// downgrade (see the retry block right after applyValidatedOutput further
+// down). Confirmed live, real repro conversation (chatId 119185376067760@lid,
+// hair-loss consultation): asking the model nicely not to refer again (a
+// prose instruction appended to the same schema/prompt) only avoided the
+// false referral ~17% of the time (1/6 real-API runs) — the model's bias
+// toward treating hair-loss vocabulary as needing a specialist is stronger
+// than prose alone can override, the same "prompt wording alone is not
+// reliable" lesson this file has already learned for SPECIALIST_REFERRAL
+// generally. openaiService.js already calls the API with strict json_schema
+// mode, where an `enum` is a hard constraint the model literally cannot
+// violate — so instead of asking, this schema variant narrows
+// handover_reason to [null] and human_handover to [false], making a
+// hand-off structurally impossible for this one retry call. Verified live
+// against the same real repro conversation: 8/8 clean runs (vs. 1/6 for the
+// prose-only approach). Deep-cloned once at module load, not per call.
+const DOWNGRADE_RETRY_RESPONSE_SCHEMA = JSON.parse(JSON.stringify(RESPONSE_SCHEMA));
+DOWNGRADE_RETRY_RESPONSE_SCHEMA.properties.handover_reason.enum = [null];
+DOWNGRADE_RETRY_RESPONSE_SCHEMA.properties.human_handover.enum = [false];
+
 // 2026-08-09 — deterministic backstop for llmSystemPrompt.js's rule 8-ب
 // ("never claim a product photo is/isn't available — that's only known by
 // the deterministic Sheet-lookup path"). Confirmed live, chatId
@@ -164,6 +185,16 @@ const PHOTO_WORD_PATTERN = /صور/;
 const PHOTO_UNAVAILABILITY_PHRASES = ['مفيش', 'مش متاح', 'مش متاحه', 'لا يوجد', 'غير متاح', 'غير متاحه'].map(normalizeArabic);
 const PHOTO_HALLUCINATION_SAFE_REPLY =
   'تحت أمرك 🌸 لو حابة صورة للمنتج، قوليلي "ممكن صورة" وهبعتهالك فورًا لو متاحة عندنا.';
+
+// 2026-08-18 — ground-truth marker for RESPONSE_SCHEMA's unlisted_product_offer
+// field (llmSystemPrompt.js), same "verify the model's claim against its own
+// actual reply_text" pattern as SPECIALIST_REFERRAL_REPLY_MARKER/
+// CUSTOMER_REQUEST_REPLY_MARKER inside applyValidatedOutput above. The
+// photo-request TAIL of the mandated sentence, not its head — live-tested
+// (scripts/_tmp_test_unlisted_product_offer.js) against the real OpenAI API:
+// the model paraphrases the opening ("give me the name/specs") often, but
+// reproduced this closing phrase byte-identical in every observed variant.
+const UNLISTED_PRODUCT_OFFER_REPLY_MARKER = 'صورة للمنتج ياريت تبعتيهالي';
 
 function isPhotoAvailabilityHallucination(replyText) {
   if (!replyText) return false;
@@ -1593,7 +1624,7 @@ async function handleProductImageRequest({ chatId, phone, trimmedText, session, 
   };
 }
 
-async function handleMessage({ chatId, phone, text, senderName, imageContext }) {
+async function handleMessage({ chatId, phone, text, senderName, imageContext, unlistedProductImageUrl }) {
   const session = getSession(chatId);
   // Captured before anything this turn touches the session — updateSession()
   // stamps a fresh updatedAt on every call below, so this is the one true
@@ -1645,6 +1676,29 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
     if (match && match.inStock !== false) {
       idMentionProduct = match;
       break;
+    }
+  }
+
+  // 2026-08-18 — unlisted-product-request capture. If the customer's
+  // PREVIOUS turn got Sara's "not available, tell me the name/specs" reply
+  // (session.awaitingUnlistedProductDetails, set below once
+  // unlisted_product_offer is confirmed), this turn is presumed to be her
+  // answer — log it into the Unlisted_Product_Requests sheet for staff to
+  // source/restock from, then clear the flag. Fire-and-forget and never
+  // touches this turn's own reply: the normal conversation flow already
+  // acknowledges her follow-up naturally from context (the prior assistant
+  // turn asking for details is right there in session.llm.history).
+  if (session.awaitingUnlistedProductDetails) {
+    updateSession(chatId, { awaitingUnlistedProductDetails: false });
+    if (trimmedText || unlistedProductImageUrl) {
+      googleSheets
+        .appendUnlistedProductRequest({
+          phone,
+          customerName: senderName,
+          productDetails: trimmedText,
+          imageUrl: unlistedProductImageUrl || '',
+        })
+        .catch((err) => logger.error(`Failed to log unlisted product request for ${phone}.`, err));
     }
   }
 
@@ -2071,7 +2125,7 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
     return { reply: `${MESSAGES.fallback}\n${MESSAGES.noProductDataDisclaimer}`, logEntry, adminNotification };
   }
 
-  const applied = applyValidatedOutput(session, validated, candidates, trimmedText);
+  let applied = applyValidatedOutput(session, validated, candidates, trimmedText);
 
   // A downgraded SPECIALIST_REFERRAL/CUSTOMER_REQUEST/LONG_CONVERSATION_UNRESOLVED
   // means validated.reply_text may still be the model's (now-rejected)
@@ -2079,8 +2133,55 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
   // to history or returned to the customer, so the two are never
   // inconsistent (customer told "you need a specialist"/"talk to a human"
   // while everything else in the system treats it as routine).
-  const isFallbackDowngrade =
+  let isFallbackDowngrade =
     applied.specialistReferralDowngraded || applied.customerRequestReplyDowngraded || applied.longConversationDowngraded;
+
+  // 2026-08-18: the swap above correctly stops a false hand-off from
+  // reaching the customer, but previously always replaced the WHOLE reply
+  // with the static, product-free NORMAL_CONSULTATION_FALLBACK sentence —
+  // even when the customer had already given everything needed for a real
+  // recommendation (confirmed live, chatId 119185376067760@lid: a hair-loss
+  // consultation with hair type + no current routine + open budget already
+  // collected got the dead-end sentence and the customer left without a
+  // recommendation). One bounded retry against the SAME tier that produced
+  // the downgraded output, using DOWNGRADE_RETRY_RESPONSE_SCHEMA (see its own
+  // comment above for why a structural schema constraint, not a prose
+  // instruction, is what actually works here) — never touches anything
+  // persisted unless it comes back clean, and any error or a still-downgraded
+  // retry falls straight through to the pre-existing static fallback below,
+  // so this can only improve on the previous behavior, never regress it.
+  if (isFallbackDowngrade) {
+    const retryService = { local: localService, openai: openaiService, gemini: geminiService }[providerUsed];
+    if (retryService) {
+      try {
+        const forcedSystemInstruction = `${systemInstruction}\n\n⚠️ تنبيه فوري لهذا الرد بس: ردك اتحول برضه لصيغة تحويل لفريق بشري من غير سبب صريح كافٍ في آخر رسالة من العميلة، والتحويل ده اتلغى. كمّلي دلوقتي كاستشارة عادية 100% زي أي رد تاني: لو لسه ناقصة معلومة من قاعدة 2 اسأليها سؤال واحد بسيط، ولو المعلومات كافية رشحي منتج مناسب فورًا من قائمة المنتجات المتاحة.`;
+        const retryRaw = await retryService.generateStructuredReply({
+          systemInstruction: forcedSystemInstruction,
+          contents,
+          responseSchema: DOWNGRADE_RETRY_RESPONSE_SCHEMA,
+        });
+        const retryCandidate = retryRaw && validateModelOutput(sanitizeModelOutput(retryRaw), candidates, validBundleComplement);
+        if (retryCandidate) {
+          const retryApplied = applyValidatedOutput(session, retryCandidate, candidates, trimmedText);
+          const retryStillDowngraded =
+            retryApplied.specialistReferralDowngraded ||
+            retryApplied.customerRequestReplyDowngraded ||
+            retryApplied.longConversationDowngraded;
+          if (!retryStillDowngraded) {
+            validated = retryCandidate;
+            applied = retryApplied;
+            isFallbackDowngrade = false;
+            logger.info(
+              `Downgrade retry against ${providerUsed} produced a clean consultation continuation for "${trimmedText}" — using it instead of the static fallback.`
+            );
+          }
+        }
+      } catch (err) {
+        logger.error(`Downgrade retry against ${providerUsed} failed — falling back to the static consultation message.`, err);
+      }
+    }
+  }
+
   // Loop guard (2026-08-09) — see REPEATED_FALLBACK_LOOP_REASON's comment
   // above for why a second consecutive downgrade must not just repeat the
   // same sentence again. Counts consecutive turns, resets the moment a turn
@@ -2129,6 +2230,24 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
       shippingMethod: applied.orderData.shippingMethod,
     });
   }
+
+  // 2026-08-18 — ground-truth check for unlisted_product_offer. Live-tested
+  // against the real OpenAI API (scripts/_tmp_test_unlisted_product_offer.js):
+  // the structured boolean and reply_text disagree often enough to matter —
+  // one real run wrote the exact mandated sentence into reply_text while
+  // still setting unlisted_product_offer=false, the same "internally
+  // inconsistent structured output" gap SPECIALIST_REFERRAL_REPLY_MARKER's
+  // comment already documented — so reply_text is checked alone (an OR, not
+  // an AND with the boolean), same as that guard. Deliberately checks only
+  // the photo-request tail of the mandated sentence, not its head: live
+  // testing also showed the model paraphrases the "give me the name/specs"
+  // opening surprisingly often (e.g. "ممكن تديني إياها" instead of the exact
+  // wording) while the photo-request closing ("ولو معاكي صورة للمنتج ياريت
+  // تبعتيهالي") came back byte-identical in every observed paraphrase —
+  // matching on that tail catches every real observed variant, not just the
+  // fully-verbatim case.
+  const unlistedProductOfferConfirmed =
+    typeof validated.reply_text === 'string' && validated.reply_text.includes(UNLISTED_PRODUCT_OFFER_REPLY_MARKER);
 
   // Deterministic backstop — see PHOTO_HALLUCINATION_SAFE_REPLY's comment
   // above. Checked after every other reply_text substitution above so it
@@ -2214,6 +2333,14 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
     // message. adLandingCampaignId itself is left alone — it's just a
     // "already handled this session" marker, not something later turns read.
     adLandingPending: false,
+    // Set only on a verified unlisted_product_offer turn (see
+    // unlistedProductOfferConfirmed above) — consumed at the top of this
+    // function on the customer's next turn to log her follow-up into the
+    // Unlisted_Product_Requests sheet. Left untouched (not force-cleared to
+    // false) on every other turn so an in-progress ask survives until it's
+    // actually answered, exactly like awaitingOrderConfirmationReply/
+    // awaitingFeedbackRating elsewhere in this file.
+    awaitingUnlistedProductDetails: unlistedProductOfferConfirmed ? true : session.awaitingUnlistedProductDetails,
   });
 
   const { logEntry, adminNotification, orderHistoryEntry } = buildLogEntryAndNotification(

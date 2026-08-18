@@ -16,6 +16,7 @@ const deploymentAgent = require('./bot/deploymentAgent');
 const emailAlert = require('./utils/emailAlert');
 const { runExclusive } = require('./utils/chatLock');
 const { getSession } = require('./bot/conversationMemory');
+const unlistedProductImageStore = require('./services/unlistedProductImageStore');
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled promise rejection (bot continues running).', reason);
@@ -104,6 +105,14 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 function startExpressServer() {
   const app = express();
   app.use(express.json());
+
+  // 2026-08-18 — serves photos customers send of an unlisted product, saved
+  // by unlistedProductImageStore.js, so the "Image URL" column in the new
+  // Unlisted_Product_Requests sheet is a real clickable link for staff — same
+  // static-file-behind-the-existing-nginx-proxy pattern as everything else
+  // reachable externally (see /etc/nginx/sites-available/beautyhub, which
+  // needs a matching location block for this same URL_PREFIX).
+  app.use(unlistedProductImageStore.URL_PREFIX, express.static(unlistedProductImageStore.STORE_DIR));
 
   app.get('/', (req, res) => {
     res.send('Beauty Hub October WhatsApp Bot is running');
