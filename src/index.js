@@ -15,6 +15,7 @@ const campaignKnowledge = require('./bot/campaignKnowledge');
 const deploymentAgent = require('./bot/deploymentAgent');
 const emailAlert = require('./utils/emailAlert');
 const { runExclusive } = require('./utils/chatLock');
+const { getSession } = require('./bot/conversationMemory');
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled promise rejection (bot continues running).', reason);
@@ -163,6 +164,7 @@ function startExpressServer() {
         productTotal: order.totalPrice,
         shippingFeeOverrideEGP: order.shippingFeeOverrideEGP,
         shippingMethod: order.shippingMethod,
+        quantity: order.quantity,
       });
       res.set('Content-Type', 'text/html; charset=utf-8').send(html);
     } catch (err) {
@@ -210,9 +212,40 @@ function startExpressServer() {
     if (!config.adminSendToken || !tokensMatch(req.header('X-Admin-Send-Token'), config.adminSendToken)) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    const { chatId, text } = req.body || {};
+    const { chatId, text, force } = req.body || {};
     if (!chatId || !text) {
       return res.status(400).json({ error: 'chatId and text are required.' });
+    }
+    // 2026-08-19 addition — confirmed live (chatId 88876412584107@lid, phone
+    // 201055990502): a manually-triggered message asked this exact customer
+    // to confirm her order via "تأكدي الأوردر بالرد بكلمة تأكيد" 44 seconds
+    // AFTER she had already replied تمام and her order was already
+    // Confirmed — sent because whoever composed it (human or agent) read her
+    // session state earlier in a longer investigation and never re-checked
+    // immediately before sending. Same "acted on a stale snapshot instead of
+    // live state" shape already fixed in orderPipeline.js's markInvoiceSent —
+    // this is the equivalent guard for this endpoint. session.pendingConfirmedOrderRow
+    // is the live, authoritative "is an order actually awaiting HER confirmation
+    // right now" flag (llmAgent.js clears it to null the instant a real
+    // تأكيد/رفض reply is processed) — checked fresh, right here, at send
+    // time, not from whatever the caller last happened to read. Blocks by
+    // default (safer to make a human/agent notice and consciously resend
+    // than to silently repeat a redundant ask to a real customer); pass
+    // "force": true once you've verified a resend really is intentional
+    // (e.g. the order changed and genuinely needs re-confirming).
+    const CONFIRMATION_REQUEST_PHRASES = ['تأكدي الأوردر', 'بكلمة تأكيد', 'بكلمة تمام', 'بكلمة "تأكيد"', 'بكلمة "تمام"'];
+    const looksLikeConfirmationRequest = CONFIRMATION_REQUEST_PHRASES.some((p) => text.includes(p));
+    if (looksLikeConfirmationRequest && !force) {
+      const session = getSession(chatId);
+      if (!session.pendingConfirmedOrderRow) {
+        logger.warn(
+          `Blocked a likely-redundant order-confirmation-request admin message to ${chatId} — no order for this chat is currently awaiting her confirmation (it may already be Confirmed/Rejected). Pass "force": true to send anyway.`
+        );
+        return res.status(409).json({
+          error:
+            'This message looks like an order-confirmation request, but no order for this chat is currently awaiting confirmation from the customer — it may already have been confirmed or rejected. Pass "force": true in the request body to send anyway if this is genuinely intentional.',
+        });
+      }
     }
     try {
       await whatsappClient.sendMessageToChatId(chatId, text);

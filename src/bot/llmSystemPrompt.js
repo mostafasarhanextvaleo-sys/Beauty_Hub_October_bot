@@ -96,6 +96,7 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
 8. الالتزام الصارم بالبيانات: معاكي قائمة منتجات مطابقة لرسالة العميل بس (مش الكتالوج كله). ممنوع نهائياً تخترعي منتج أو سعر مش موجود في القائمة دي، حتى لو بتقترحي روتين. لو السعر مش متاح، قولي "حد من فريق المتجر هيأكدلك السعر بالظبط قريب".
 8-ب. صور المنتجات (2026-08-09): معاكيش أي معلومة عن وجود أو عدم وجود صورة لأي منتج — القرار ده بيتاخد من نظام منفصل تماماً بيقرأ رابط الصورة الحقيقي من شيت المنتجات، مش من كلامك. ممنوع نهائياً تقولي جمل زي "الصورة مش متاحة"، "مفيش صورة للمنتج ده"، أو "هبعتلك الصورة أول ما تتوفر" — أي جملة من دي هتبقى كذب محتمل لأنك مش عارفة فعلاً. لو العميلة سألت عن صورة منتج أو ذكرت كلمة "صورة"، سيبي الرد عادي (جاوبي على أي جزء تاني من رسالتها، أو اسأليها توضيح لو محتاجة)، من غير ما تتكلمي عن الصورة نفسها خالص — النظام هيتعامل مع طلب الصورة تلقائيًا في رسالة منفصلة لو فعلاً طلبتها بوضوح.
 9. إتمام الطلب: لو العميل قال "احجز" أو أكد إنه عايز يطلب، اجمعي 3 حاجات: اسم العميل، العنوان بالتفصيل، ورقم تليفون بديل للمندوب (اسأليها بأسلوب زي "لو في رقم تاني بديل للمندوب عشان لو الرقم الأول مقفول؟"). اسأليها عن حاجة واحدة بس في كل رسالة — ممنوع تجمعي أكتر من سؤال في نفس الرد، حتى لو كل الحاجات لسه ناقصة. استني رد العميل على السؤال الحالي قبل ما تنتقلي للسؤال اللي بعده، وابدأي بس بالحاجة اللي لسه مش موجودة عندك (لو عندك الاسم بالفعل من كلامها قبل كده، متسأليش عنه تاني). متأكديش الطلب غير لما الثلاثة يكونوا موجودين.
+9-ب. الكمية (2026-08-19): لو العميلة ذكرت عدد قطع معين ("12 قطعة"، "اتنين"، "3 من دول")، سجليه في order_data.quantity زي ما هو بالظبط. لو مقالتش عدد خالص، سيبي quantity فاضي (null) — النظام هيفترض قطعة واحدة تلقائي، مش لازم تسأليها أو تفترضي رقم بنفسك. ممنوع نهائياً تحسبي إجمالي السعر (سعر القطعة × العدد) بنفسك في أي وقت — لو حسّيتي إن محتاجة تقوليلها الإجمالي، هتلاقيه جاهز ومحسوب في قسم منفصل تحت (لو موجود) بعد ما تحددي الكمية؛ لو مش موجود لسه، قوليلها إجمالي الطلب هيتأكد بعد ما تحددي الكمية والعنوان.
 10. التحويل لموظف بشري (2026-08-04: قاعدة "zero-lock" — ممنوع نهائيًا التحويل أو التزام الصمت بسبب ارتباك بسيط، تهرب من سؤال، أو مجرد إحساسك إن الرد "مش واضح". فيه حالتين مسموح بيهم بس، ميتلخبطوش):
     أ) طلب صريح للتحدث مع إنسان: التعرف على الطلبات الصريحة دي (زي "خدمة العملاء"، "عايز أكلم بني آدم") بيتم تلقائيًا بواسطة النظام قبل ما الرسالة توصلك أصلاً — مفيش داعي تكتشفيها بنفسك خالص. لو وصلتلك رسالة عادية، يبقى العميلة *مطلبتش* حد بشري صراحة فيها. ممنوع نهائيًا تفعّلي human_handover=true أو handover_reason="CUSTOMER_REQUEST" بمجرد إحساسك إنها مرتبكة أو غاضبة أو مش واضحة — ده مش سبب كافي أبدًا. سيبي الحالة دي دايمًا human_handover=false وhandover_reason=null، وكمّلي تساعديها بشكل طبيعي وصبور بدل ما تحوّليها.
     ب) حالة جلدية طبية تحتاج رأي متخصص (حالة صحية حقيقية في الجلد نفسه — مختلفة تمامًا عن شكوى توصيل أو منتج تالف، أو مجرد طلب منتج "علاجي" عادي زي كريم للهالات أو التصبغات): فعّلي الحالة دي بس لو رسالة العميلة الحالية نفسها (مش رسالة قديمة، ومش تخمين من نبرتها) وصفت أعراض حادة ومؤلمة فعلاً زي حب الشباب الكيسي (cystic acne)، التهاب جلدي شديد، تورم، أو نزيف، أو طلبت صراحة رأي دكتور/متخصص جلدية لتشخيص حالة صحية. رد مقتضب أو غامض زي "تمام"، "أه"، "تم"، "نعم"، أو ".." مش دليل على حالة طبية أبدًا، حتى لو اتكلمت عن حبوب قبل كده في نفس المحادثة — الغموض يتعامل معاه كاستشارة عادية، مش كتحويل. أي ذكر لكلمة "حبوب" أو "رؤوس سوداء" من غير الأعراض الحادة دي بالتحديد — حتى لو الرد كله كلمة واحدة بس زي "حبوب" أو "عندي حبوب" أو "حبوب كتير" أو "حبوب بتضايقني"، من غير أي سياق زيادة — مش سبب لتفعيل SPECIALIST_REFERRAL خالص (راجعي القاعدة الحرجة والأمثلة في أول البرومبت). دي مشكلة بشرة عادية جداً وتتعامل معاها زي أي استشارة تانية (رشحي منتج مناسب للحبوب من القائمة عادي). نفس الكلام بالظبط بينطبق على أي وصف لعلامات تقدم في السن — خطوط الوجه الدقيقة، ترهلات، تجاعيد، انتفاخ أو هالات تحت العين، فقدان نضارة أو شد البشرة — دي كمان مش سبب لتفعيل SPECIALIST_REFERRAL خالص، حتى لو اتكررت في أكتر من رسالة أو اتقالت مع تفاصيل تانية زي الميزانية أو الروتين الحالي بعد كده (راجعي القاعدة الحرجة التانية في أول البرومبت). دي كمان مشكلة بشرة عادية جداً وتتعامل معاها زي أي استشارة تانية. لو مجرد استخدمت كلمة زي "علاجي" أو "يعالج المشكلة" وهي بتتكلم عن مشكلة عادية (هالات، تصبغات، جفاف، حبوب عادية)، أو لو شكواها عن توصيل متأخر أو منتج وصل تالف/مكسور، فده كمان مش SPECIALIST_REFERRAL خالص — كمّلي معاها عادي (رشحي منتج مناسب، أو اتبعي سياسة الاسترجاع لو الشكوى عن منتج تالف، أو فعّلي قاعدة 10-أ لو طلبت حد بشري). لما تتأكدي إنها فعلاً حالة صحية جلدية حادة بالمعايير الصريحة فوق، ممنوع تحاولي تشخّصي أو تعالجي الحالة دي بمنتج عادي مهما كان — فعّلي human_handover=true، حطي handover_reason="SPECIALIST_REFERRAL"، وقوليلها الجملة دي بالظبط من غير أي تغيير: "حالتك محتاجة متابعة من فريقنا المتخصص، فريق Beauty Hub October هيتابع معاكي فورًا 🌸".
@@ -496,6 +497,31 @@ function serializeCandidates(products) {
 // many more times it repeats (2026-08-04 zero-lock safeguard).
 const REPEATED_MESSAGE_NOTE = `العميلة كررت نفس رسالتها اللي فاتت بالظبط من غير أي تفاصيل جديدة — يبان إن ردك اللي فات مكانش واضح أو مفيد ليها. ممنوع تكرري نفس ردك اللي فات بالظبط تاني. بدل من كده: وضحي سؤالك بشكل مختلف، أو لو فاهمة إنها محتاجة حاجة معينة (زي منتج ذكرته قبل كده في المحادثة)، اعرضيه عليها مباشرة بدل ما تسأليها تسؤال عام تاني.`;
 
+// 2026-08-19 addition — grounded quantity x unit-price total, same "code
+// computes it, model only relays the number" pattern as
+// buildShippingZoneSection above (see order_data.quantity's schema comment
+// in RESPONSE_SCHEMA for the incident this closes — a 12-unit order that
+// silently recorded a 1-unit total). Only rendered when there's something
+// non-trivial to ground: a real recommended product with a real parseable
+// price, and a quantity actually above the default of 1 — the overwhelming
+// majority of orders are single-unit, and there's nothing for the model to
+// get wrong there, so no section (and no added prompt weight) for those.
+function parsePriceDigits(price) {
+  const digits = String(price || '').replace(/\D/g, '');
+  return digits ? Number(digits) : null;
+}
+
+function buildQuantitySection(quantity, recommendedProduct) {
+  const qty = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+  if (qty <= 1 || !recommendedProduct) return '';
+  const unitPrice = parsePriceDigits(recommendedProduct.price);
+  if (unitPrice === null) return '';
+  const total = unitPrice * qty;
+  return `
+
+بيانات كمية محسوبة فعلياً (استخدمي الأرقام دي بالظبط لو ذكرتيها، وممنوع تحسبي رقم تاني بنفسك أو تضربي السعر في العدد): العميلة عايزة ${qty} قطعة من ${recommendedProduct.name}، سعر القطعة الواحدة ${unitPrice} جنيه، إجمالي سعر المنتجات (من غير الشحن) ${total} جنيه.`;
+}
+
 function buildSystemPrompt(
   candidates,
   bundleComplement,
@@ -508,9 +534,12 @@ function buildSystemPrompt(
   adLanding,
   longConversationPending,
   deliveryAddress,
-  idMention
+  idMention,
+  quantity,
+  recommendedProduct
 ) {
   const shippingZoneSection = buildShippingZoneSection(matchShippingZone(deliveryAddress), Boolean(deliveryAddress));
+  const quantitySection = buildQuantitySection(quantity, recommendedProduct);
   const bundleSection = bundleComplement
     ? `
 
@@ -564,7 +593,7 @@ ${activeCorrections.map((rule) => `- ${rule}`).join('\n')}`
 
 ${SHIPPING_POLICY}
 
-${RETURN_POLICY}${correctionsSection}${offersSection}${customerProfileSection}${shippingZoneSection}${orderConfirmationSection}${feedbackRatingSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}${longConversationSection}${idMentionSection}
+${RETURN_POLICY}${correctionsSection}${offersSection}${customerProfileSection}${shippingZoneSection}${quantitySection}${orderConfirmationSection}${feedbackRatingSection}${websiteOrderSection}${repeatedMessageSection}${adLandingSection}${longConversationSection}${idMentionSection}
 
 منتجات مطابقة لرسالة العميل الحالية — استخدمي فقط من هذه القائمة، وممنوع نهائياً اختراع منتج أو سعر مش موجود هنا:
 ${serializeCandidates(candidates)}${bundleSection}
@@ -608,7 +637,7 @@ const RESPONSE_SCHEMA = {
     price_quoted: {
       type: ['string', 'null'],
       description:
-        'The exact numeric PRODUCT price you stated in reply_text, digits only (e.g. "150"), if and only if you stated a specific product price. Never the shipping/delivery fee — that is a fixed store policy, not a product price, so leave this null even if you mentioned the 60 EGP shipping cost in reply_text. Set to null — not a placeholder word — if you did not state a product price, or if the candidate\'s price is unavailable.',
+        'The exact numeric PER-UNIT product price you stated in reply_text, digits only (e.g. "150"), if and only if you stated a specific product price. ALWAYS the single-unit price from the candidate list, even when the customer wants multiple units — never a multiplied total (e.g. quantity x price); that arithmetic is done in code and handed back to you as a separate grounded total, see order_data.quantity\'s schema comment. Never the shipping/delivery fee — that is a fixed store policy, not a product price, so leave this null even if you mentioned the 60 EGP shipping cost in reply_text. Set to null — not a placeholder word — if you did not state a product price, or if the candidate\'s price is unavailable.',
     },
     routine_bundle_suggested_id: {
       type: ['string', 'null'],
@@ -641,9 +670,27 @@ const RESPONSE_SCHEMA = {
           description:
             'Set to "express" only if the customer explicitly asked for or agreed to Same-Day Express shipping (only ever offered to Cairo/Giza customers per the shipping policy above). Set to "standard" if she explicitly wants normal shipping, or if she previously chose express but changed her mind. null if shipping speed hasn\'t come up this turn — her existing choice (if any) carries over, defaulting to standard.',
         },
+        // 2026-08-19 addition — confirmed live (chatId 88876412584107@lid,
+        // phone 201055990502): a customer ordering 12 units had no
+        // structured field to capture that at all — the quantity only ever
+        // existed as free text, so the recorded order total silently stayed
+        // at the single-unit price until a human manually corrected the
+        // Sheet row after the fact. Same "model states the fact, code does
+        // the arithmetic" split as price_quoted/shipping_method — this field
+        // is ONLY ever the customer's stated quantity, never a computed
+        // total; multiplying unit price x quantity happens in code
+        // (applyValidatedOutput/resolveQuantity, llmAgent.js) and is handed
+        // back to you as a grounded, ready-to-use total in a dedicated
+        // section further down — see that section's own instructions for
+        // why you must never do this multiplication yourself.
+        quantity: {
+          type: ['integer', 'null'],
+          description:
+            'How many units of the recommended/order product the customer wants, if she has stated a specific number (e.g. "12 قطعة", "عايزة اتنين"). null if she has not specified a quantity yet — her existing quantity (if any) carries over, defaulting to 1 (a single unit) if never specified at all. Never a computed total price — just the count of items.',
+        },
         confirmed: { type: 'boolean', description: 'True only if the customer just explicitly confirmed the order details are correct.' },
       },
-      required: ['customer_name', 'delivery_address', 'alt_phone', 'shipping_method', 'confirmed'],
+      required: ['customer_name', 'delivery_address', 'alt_phone', 'shipping_method', 'quantity', 'confirmed'],
       additionalProperties: false,
     },
     human_handover: { type: 'boolean' },

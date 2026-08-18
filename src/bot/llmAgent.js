@@ -239,11 +239,20 @@ const MAX_CONSECUTIVE_FALLBACK_DOWNGRADES = 1;
 // deterministic code/data interaction that retrying alone never recovers
 // from. That branch also never recorded in session.llm.history that a
 // fallback had been sent, so the model had no memory across retries that it
-// had already failed — nothing could ever self-escalate. Same threshold and
-// reasoning as MAX_CONSECUTIVE_FALLBACK_DOWNGRADES just above: the first
-// failure is still retried silently, a second consecutive one hands off to
-// a human instead of looping indefinitely.
-const MAX_CONSECUTIVE_TIER_FAILURES = 1;
+// had already failed — nothing could ever self-escalate.
+//
+// 2026-08-19 (store owner directive): raised from 1 to 5 — the original
+// value handed a customer to a human after just 2 straight total-tier
+// failures, which turned out to be tight enough to fire on transient
+// multi-provider blips, not just genuine stuck loops. 5 gives Sara more
+// room to recover on her own (each retry still carries the full
+// session.llm.history, so later attempts aren't starting from scratch)
+// before involving a human. Deliberately NOT the same value as
+// MAX_CONSECUTIVE_FALLBACK_DOWNGRADES above — that guard is about a
+// different failure shape (the model's own repeated downgraded/redirected
+// replies, not hard technical failures across both AI providers) and was
+// intentionally left at its own value, not raised in lockstep with this one.
+const MAX_CONSECUTIVE_TIER_FAILURES = 5;
 
 // Canonical in-memory shape is the OpenAI chat format directly —
 // {role: 'user'|'assistant', content: string} — since OpenAI is now the
@@ -463,7 +472,27 @@ function validateModelOutput(output, candidates, bundleComplement = null) {
       // checking against the narrower list was rejecting genuinely correct
       // prices whenever that happened.
       const mentioned = candidates.filter((p) => rawMentionedIds.includes(p.id));
-      const verified = mentioned.some((p) => String(p.price || '').replace(/\D/g, '') === quotedDigits);
+      // 2026-08-19 fix — confirmed live (chatId 88876412584107@lid, phone
+      // 201055990502): rawMentionedIds can be non-empty but resolve to ZERO
+      // real candidates — the exact "model wrote the product's NAME instead
+      // of its real id" defect idsOutsideCandidates already recovers from
+      // above (drops the bad reference, keeps the reply). But `mentioned`
+      // being empty here meant there was nothing left to verify the price
+      // against, so this hard-rejected the ENTIRE reply for the same root
+      // cause a second time — both AI tiers hit this on the same turn twice
+      // in a row and escalated a real customer to human handoff, for a
+      // price that was, in fact, real and correct. Falls back to checking
+      // the quoted price against every real candidate this turn (still a
+      // genuine catalog price, never an invented number) specifically when
+      // the model DID attempt a mention but every one of its ids was
+      // invalid — a reply that quotes a price with NO attempted mention at
+      // all (rawMentionedIds empty from the start) still verifies strictly
+      // against `mentioned` (empty -> always rejected), unchanged from
+      // before this fix, since that case has no comparable "it tried and
+      // botched the id" signal to justify the wider check.
+      const attemptedInvalidMention = rawMentionedIds.length > 0 && mentioned.length === 0;
+      const priceVerificationPool = attemptedInvalidMention ? candidates : mentioned;
+      const verified = priceVerificationPool.some((p) => String(p.price || '').replace(/\D/g, '') === quotedDigits);
       if (!verified) {
         logger.warn(`LLM agent quoted an unverified price "${output.price_quoted}" — discarding reply.`);
         return null;
@@ -573,6 +602,43 @@ function resolveShippingMethod(requestedMethod, prevMethod, deliveryAddress) {
   return 'standard';
 }
 
+// 2026-08-19 addition — confirmed live (chatId 88876412584107@lid, phone
+// 201055990502, Confirmed_Orders row 13): a customer ordering 12 units had
+// the quantity captured only as free text — session.orderData had nowhere
+// to put it — so the automated confirmation flow recorded the single-unit
+// price as the whole order's total, and a human had to notice and correct
+// the Sheet row after the fact. Same verify-don't-trust-verbatim pattern as
+// resolveShippingMethod just above: a non-integer, zero/negative, or
+// implausibly large claim is clamped back to the carried-over/default value
+// rather than trusted as-is — MAX_REASONABLE_QUANTITY is a generous ceiling
+// for a WhatsApp cosmetics order (not a real inventory limit), there purely
+// to catch a misparse (e.g. a phone number digit string ending up here)
+// before it becomes an absurd invoiced total.
+const MAX_REASONABLE_QUANTITY = 200;
+
+function resolveQuantity(rawQuantity, prevQuantity) {
+  const carriedOver = Number.isInteger(prevQuantity) && prevQuantity > 0 ? prevQuantity : 1;
+  if (!Number.isInteger(rawQuantity) || rawQuantity <= 0) return carriedOver;
+  if (rawQuantity > MAX_REASONABLE_QUANTITY) {
+    logger.warn(
+      `LLM agent set an implausible order_data.quantity (${rawQuantity}) — clamping to ${carriedOver} instead of trusting it verbatim.`
+    );
+    return carriedOver;
+  }
+  return rawQuantity;
+}
+
+// Digit-only price parsing, same approach validateModelOutput's price_quoted
+// check already uses — kept local rather than importing invoiceGenerator.js's
+// parsePriceToNumber to avoid pulling a utils/ module into this file just for
+// one line; invoiceGenerator.js itself already requires this file's
+// STORE_NAME export by way of llmSystemPrompt.js, so importing back would
+// risk a circular require.
+function parsePriceDigitsAsNumber(price) {
+  const digits = normalizeArabic(String(price || '')).replace(/\D/g, '');
+  return digits ? Number(digits) : null;
+}
+
 // Code, never the model, decides order completion and human handover — both
 // are re-derived here from validated fields rather than trusted as asserted.
 function applyValidatedOutput(session, output, candidates, text) {
@@ -583,6 +649,7 @@ function applyValidatedOutput(session, output, candidates, text) {
     deliveryAddress,
     altPhone: output.order_data.alt_phone || prevOrder.altPhone || null,
     shippingMethod: resolveShippingMethod(output.order_data.shipping_method, prevOrder.shippingMethod, deliveryAddress),
+    quantity: resolveQuantity(output.order_data.quantity, prevOrder.quantity),
   };
 
   const fieldsBefore = [prevOrder.customerName, prevOrder.deliveryAddress, prevOrder.altPhone].filter(Boolean).length;
@@ -686,6 +753,19 @@ function applyValidatedOutput(session, output, candidates, text) {
     }
   }
   const recommendedProductNowOutOfStock = Boolean(recommendedProduct && (!recommendedProductLive || recommendedProductLive.inStock === false));
+
+  // 2026-08-19 addition — the real, code-computed product-only total (unit
+  // price x quantity), grounded the exact same way the shipping fee already
+  // is (never left to the model to multiply). Uses the LIVE resolved
+  // product (falling back to the cached one only if live resolution
+  // failed) so this reflects the current real price, not a stale one —
+  // same "never trust a cached price" reasoning as
+  // recommendedProductNowOutOfStock just above. null (not 0) when there's
+  // no resolvable product/price yet, so callers can tell "nothing to show"
+  // apart from "a genuine free item."
+  const priceSourceProduct = recommendedProductLive || recommendedProduct;
+  const unitPriceNum = priceSourceProduct ? parsePriceDigitsAsNumber(priceSourceProduct.price) : null;
+  const computedProductTotal = unitPriceNum !== null ? unitPriceNum * orderData.quantity : null;
 
   const orderConfirmed =
     allFieldsPresent &&
@@ -815,6 +895,9 @@ function applyValidatedOutput(session, output, candidates, text) {
     specialistReferralDowngraded,
     customerRequestReplyDowngraded,
     longConversationDowngraded,
+    // 2026-08-19 addition — see its own computation comment above. null when
+    // there's no resolvable product/price yet.
+    computedProductTotal,
   };
 }
 
@@ -851,9 +934,39 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
     const shippingLine = orderShippingZone
       ? `الشحن: ${shippingFeeEGP} جنيه (${orderShippingZone.name}${isExpress ? ' — Same-Day Express' : ''})\n`
       : `الشحن: محتاج تأكيد يدوي (العنوان مطابقش منطقة معروفة)\n`;
+    // 2026-08-19 addition — confirmed live (chatId 88876412584107@lid, phone
+    // 201055990502, Confirmed_Orders row 13): productName/price used to
+    // always be the bare single-unit values, so a multi-unit order's real
+    // total silently never made it past this point — a human had to notice
+    // and hand-correct the Sheet row afterward. applied.computedProductTotal
+    // (unit price x quantity, computed in applyValidatedOutput) is now the
+    // one true product-total value threaded everywhere downstream: Order
+    // History's price column, the admin ping, and — via logEntry, same as
+    // shippingMethod above — campaignWorker.js's appendConfirmedOrder, which
+    // is what actually lands in Confirmed_Orders' Total Price column. Falls
+    // back to the bare unit price only when nothing could be computed
+    // (no resolvable product yet), matching the pre-quantity behavior exactly.
+    const quantity = applied.orderData.quantity || 1;
+    const productTotalDisplay =
+      applied.computedProductTotal !== null
+        ? String(applied.computedProductTotal)
+        : applied.recommendedProduct
+        ? applied.recommendedProduct.price
+        : '';
+    const productNameWithQuantity =
+      applied.recommendedProduct && quantity > 1
+        ? `${applied.recommendedProduct.name} × ${quantity}`
+        : applied.recommendedProduct
+        ? applied.recommendedProduct.name
+        : baseFields.productName;
+    const quantityLine =
+      quantity > 1 && applied.recommendedProduct
+        ? `الكمية: ${quantity} × ${applied.recommendedProduct.price} = ${productTotalDisplay} جنيه\n`
+        : '';
     const adminNotification =
       `✅ طلب جديد مكتمل! (وكيل ذكي)\n` +
       `المنتج: ${applied.recommendedProduct ? applied.recommendedProduct.name : 'غير محدد'}\n` +
+      quantityLine +
       `الاسم: ${applied.orderData.customerName || 'غير محدد'}\n` +
       `رقم العميل: ${phone}\n` +
       `رقم بديل: ${applied.orderData.altPhone || 'غير محدد'}\n` +
@@ -869,14 +982,14 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
       date: new Date().toISOString(),
       customerName: applied.orderData.customerName || baseFields.customerName,
       phone,
-      productName: applied.recommendedProduct ? applied.recommendedProduct.name : baseFields.productName,
-      price: applied.recommendedProduct ? applied.recommendedProduct.price : '',
+      productName: productNameWithQuantity,
+      price: productTotalDisplay,
       orderStatus: 'Completed',
     };
     return {
       logEntry: {
         ...baseFields,
-        productName: applied.recommendedProduct ? applied.recommendedProduct.name : baseFields.productName,
+        productName: productNameWithQuantity,
         customerName: applied.orderData.customerName || baseFields.customerName,
         deliveryAddress: applied.orderData.deliveryAddress || baseFields.deliveryAddress,
         // 2026-08-19 addition — threaded through to campaignWorker.js's
@@ -885,6 +998,10 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
         // Method" Confirmed_Orders column). Always 'standard' or 'express',
         // never null — resolveShippingMethod above guarantees that.
         shippingMethod: applied.orderData.shippingMethod,
+        // 2026-08-19 addition — same threading purpose, for the new
+        // "Quantity" Confirmed_Orders column. Always a positive integer
+        // (resolveQuantity above guarantees that, default 1).
+        quantity,
         orderStatus: 'Completed',
         notes: `تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)${recoveryNote}`,
       },
@@ -1830,7 +1947,16 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
     // internally (shippingZones.js) — llmAgent.js never touches the fee
     // itself, same separation used for product price grounding.
     session.orderData && session.orderData.deliveryAddress,
-    idMentionForPrompt
+    idMentionForPrompt,
+    // 2026-08-19 quantity addition — the quantity captured in a PRIOR turn
+    // (same "not yet available for this turn's own new extraction" caveat
+    // as deliveryAddress just above), paired with the currently-pinned
+    // recommendedProduct so buildQuantitySection can ground a real
+    // quantity x unit-price total when relevant. See RESPONSE_SCHEMA's
+    // order_data.quantity comment for why this must never be computed by
+    // the model itself.
+    session.orderData && session.orderData.quantity,
+    session.recommendedProduct
   );
   const history = (session.llm && session.llm.history) || [];
   const contents = [...history, { role: 'user', content: modelText }];

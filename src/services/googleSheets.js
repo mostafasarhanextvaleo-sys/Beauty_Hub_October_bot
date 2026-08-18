@@ -341,6 +341,19 @@ const CONFIRMED_ORDERS_HEADERS = [
   // Blank on any pre-existing row (created before this column did) reads as
   // 'Standard' everywhere this is consumed — never treated as express.
   'Shipping Method',
+  // 2026-08-19 addition, same pure column-ADDITION migration pattern as the
+  // two columns above — confirmed live (chatId 88876412584107@lid, phone
+  // 201055990502): a 12-unit order had no structured place to record the
+  // quantity at all, so Total Price silently recorded just the single-unit
+  // price until a human noticed and hand-corrected the row. Written once, at
+  // order-creation time, by appendConfirmedOrder — llmAgent.js's
+  // resolveQuantity/computedProductTotal already fold this into Products
+  // (e.g. "اسم المنتج × 12") and Total Price directly, so this column is
+  // additionally-informative for staff (a distinct, sortable/filterable
+  // number) rather than the only place quantity is recorded. Blank on any
+  // pre-existing row reads as 1 everywhere this is consumed — never treated
+  // as "no quantity"/0.
+  'Quantity',
 ];
 
 const FEEDBACK_HEADERS = ['Date', 'Customer Name', 'Phone', 'Rating', 'Comments'];
@@ -1510,6 +1523,7 @@ async function formatConfirmedOrdersTab() {
   const confirmationColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Confirmation Status');
   const orderStatusColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Order Status');
   const shippingMethodColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Shipping Method');
+  const quantityColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Quantity');
 
   // Same setDataValidation/ONE_OF_LIST + TEXT_EQ conditional-color pattern
   // already used for Offers_Campaign's CAMPAIGN_STATUS/TEST_TRIGGER and
@@ -1576,6 +1590,16 @@ async function formatConfirmedOrdersTab() {
         fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)',
       },
     },
+    // Quantity — a plain integer count (appendConfirmedOrder writes it via
+    // RAW, which still parses a numeric value into a real number), centered
+    // like Phone rather than currency-formatted like Total Price.
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: quantityColIndex, endColumnIndex: quantityColIndex + 1 },
+        cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'CENTER' } },
+        fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+      },
+    },
     // Invoice Link / Print Invoice — HYPERLINK-formula cells (see
     // attachInvoiceLinks), styled to read as clickable actions rather than
     // plain data.
@@ -1638,7 +1662,7 @@ async function formatConfirmedOrdersTab() {
 // created at all — it would just leave the Shipping Method cell blank
 // (read as 'Standard' everywhere it's consumed, the safe default) rather
 // than losing or corrupting the order.
-async function appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod }) {
+async function appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod, quantity }) {
   if (!enabled) return null;
 
   // Explicit idempotency check — see ORDER_DEDUP_WINDOW_MS above. No
@@ -1691,23 +1715,33 @@ async function appendConfirmedOrder({ customerName, phone, address, products, to
   const rowNumber = extractRowNumber(result.data.updates && result.data.updates.updatedRange);
 
   if (rowNumber) {
+    // Shipping Method and Quantity (2026-08-19) are adjacent columns
+    // (M:N) — written in one follow-up call rather than two separate ones.
+    // Same "never let a secondary write risk the core order row" reasoning
+    // as Invoice Link/Print Invoice above: a failure here is logged but the
+    // order itself (already appended to A:F) is completely unaffected —
+    // the cells just read blank, which every downstream reader already
+    // treats as the safe default (Standard / 1 unit).
     const shippingMethodColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Shipping Method');
-    const shippingMethodCol = columnLetter(shippingMethodColIndex + 1);
+    const quantityColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Quantity');
+    const startCol = columnLetter(shippingMethodColIndex + 1);
+    const endCol = columnLetter(quantityColIndex + 1);
+    const quantityValue = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
     try {
       await sheetsCall(() =>
         sheetsClient.spreadsheets.values.update(
           {
             spreadsheetId: config.googleSheetId,
-            range: `${CONFIRMED_ORDERS_SHEET_NAME}!${shippingMethodCol}${rowNumber}`,
+            range: `${CONFIRMED_ORDERS_SHEET_NAME}!${startCol}${rowNumber}:${endCol}${rowNumber}`,
             valueInputOption: 'RAW',
-            requestBody: { values: [[shippingMethod === 'express' ? 'Express' : 'Standard']] },
+            requestBody: { values: [[shippingMethod === 'express' ? 'Express' : 'Standard', quantityValue]] },
           },
           { timeout: REQUEST_TIMEOUT_MS }
         )
       );
     } catch (err) {
       logger.error(
-        `Failed to write Shipping Method for Confirmed_Orders row ${rowNumber} — the order itself was still logged normally, but the cell may read blank (treated as Standard everywhere it's consumed).`,
+        `Failed to write Shipping Method/Quantity for Confirmed_Orders row ${rowNumber} — the order itself was still logged normally, but those cells may read blank (treated as Standard/1 unit everywhere they're consumed).`,
         err
       );
     }
@@ -1795,12 +1829,13 @@ async function getConfirmedOrdersPipelineRows() {
     sheetsClient.spreadsheets.values.get(
       {
         spreadsheetId: config.googleSheetId,
-        // 2026-08-19: widened from A2:K to A2:M to also pick up Shipping Fee
+        // 2026-08-19: widened from A2:K to A2:N — A2:M picked up Shipping Fee
         // Override (L, pre-existing — was never read here before, only by
-        // getConfirmedOrderByRow for the invoice page) and the new Shipping
-        // Method (M) — orderPipeline.js's Trusted_Clients loyalty fee calc
-        // needs the latter to charge the real express fee.
-        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A2:M`,
+        // getConfirmedOrderByRow for the invoice page) and Shipping Method
+        // (M, orderPipeline.js's Trusted_Clients loyalty fee calc needs it to
+        // charge the real express fee); N adds Quantity for the same
+        // loyalty-total accuracy reasoning.
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A2:N`,
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
@@ -1822,7 +1857,9 @@ async function getConfirmedOrdersPipelineRows() {
         orderStatus,
         shippingFeeOverride,
         shippingMethod,
+        quantity,
       ] = row;
+      const parsedQuantity = parseInt(quantity, 10);
       return {
         rowNumber: i + 2,
         date,
@@ -1840,6 +1877,9 @@ async function getConfirmedOrdersPipelineRows() {
         // write that failed and got logged) reads as 'Standard' — the same
         // safe default used everywhere else this value is consumed.
         shippingMethod: (shippingMethod || '').trim().toLowerCase() === 'express' ? 'express' : 'standard',
+        // Blank/unparseable reads as 1 — the same safe default used
+        // everywhere else this value is consumed, never 0 or NaN.
+        quantity: Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1,
       };
     })
     .filter((row) => row.phone);
@@ -2055,7 +2095,7 @@ async function getConfirmedOrderByRow(rowNumber) {
     sheetsClient.spreadsheets.values.get(
       {
         spreadsheetId: config.googleSheetId,
-        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A${rowNumber}:M${rowNumber}`,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A${rowNumber}:N${rowNumber}`,
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
@@ -2073,7 +2113,11 @@ async function getConfirmedOrderByRow(rowNumber) {
   // (pre-existing rows, or a write that failed) reads as 'standard', the
   // same safe default used everywhere else this value is consumed.
   const shippingMethod = String(row[12] || '').trim().toLowerCase() === 'express' ? 'express' : 'standard';
-  return { date, customerName, phone, address, products, totalPrice, shippingFeeOverrideEGP, shippingMethod };
+  // Column N (index 13) — see 'Quantity' header comment above. Blank/
+  // unparseable reads as 1, never 0 or NaN.
+  const parsedQuantity = parseInt(row[13], 10);
+  const quantity = Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
+  return { date, customerName, phone, address, products, totalPrice, shippingFeeOverrideEGP, shippingMethod, quantity };
 }
 
 // phone number lives in column C (index 2) of the Leads sheet; earliest row

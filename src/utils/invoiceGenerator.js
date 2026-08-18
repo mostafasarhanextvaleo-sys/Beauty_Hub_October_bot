@@ -35,8 +35,21 @@ function formatEgp(amount) {
 // printed straight from whatever browser opens it (Ctrl+P) — no PDF, no
 // storage. RTL/Arabic shaping is handled natively by that browser, same as
 // any other Arabic web page.
-function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal, shippingFeeOverrideEGP, shippingMethod }) {
+function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal, shippingFeeOverrideEGP, shippingMethod, quantity }) {
   const productTotalNum = parsePriceToNumber(productTotal);
+  // 2026-08-19 addition — confirmed live (chatId 88876412584107@lid, phone
+  // 201055990502): this line-item table used to hardcode "1" as the
+  // quantity and show the SAME number for both unit price and line total
+  // regardless of the real order size — so a 12-unit order's invoice looked
+  // like a single 420 EGP item instead of "12 x 35 = 420". productTotal is
+  // already the real, pre-multiplied grand total for this line (computed in
+  // llmAgent.js, never done here) — quantity is only used to derive the
+  // per-unit price for DISPLAY, dividing back out of that same total rather
+  // than trusting a separately-stored unit price that could drift out of
+  // sync with it. Defaults to 1 (unaffected, unit price == line total)
+  // for every pre-quantity-feature order and any row where it's unset.
+  const quantityNum = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+  const unitPriceNum = quantityNum > 0 ? productTotalNum / quantityNum : productTotalNum;
   // 2026-08-09 nationwide shipping expansion — the flat 60-EGP constant this
   // used to add is gone; the real fee now depends on the customer's actual
   // address, computed the same deterministic way everywhere else in this
@@ -111,7 +124,7 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
   <table class="items">
     <thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
     <tbody>
-      <tr><td>${escapeHtml(products) || 'غير محدد'}</td><td>1</td><td>${formatEgp(productTotalNum)}</td><td>${formatEgp(productTotalNum)}</td></tr>
+      <tr><td>${escapeHtml(products) || 'غير محدد'}</td><td>${quantityNum}</td><td>${formatEgp(unitPriceNum)}</td><td>${formatEgp(productTotalNum)}</td></tr>
     </tbody>
   </table>
   <table class="totals">

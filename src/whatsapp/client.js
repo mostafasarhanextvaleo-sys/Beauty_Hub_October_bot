@@ -864,6 +864,14 @@ function createClient() {
               // which sets this on logEntry from applied.orderData.shippingMethod
               // (already re-verified against the real zone table there).
               shippingMethod: logEntry && logEntry.shippingMethod,
+              // 2026-08-19 addition — same threading, for the new "Quantity"
+              // Confirmed_Orders column. Note: orderHistoryEntry.price/products
+              // (used just above) are ALREADY the quantity-multiplied total and
+              // the quantity-annotated product name (see
+              // buildLogEntryAndNotification) — this field is additionally for
+              // the dedicated structured column, not what makes the total itself
+              // correct.
+              quantity: logEntry && logEntry.quantity,
             })
             .catch((err) => {
               logger.error('Campaign Confirmed_Orders logging failed (order itself was still logged normally).', err);

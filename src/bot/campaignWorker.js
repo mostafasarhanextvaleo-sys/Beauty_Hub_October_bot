@@ -819,7 +819,7 @@ async function findOpenDraftOrderRow(phone) {
 // this — chatLock's lock is a process-global per-key queue (see
 // utils/chatLock.js), so any writer using this same chatId, from any file,
 // is now correctly serialized against every other one.
-async function handleOrderConfirmed(chatId, { customerName, phone, address, products, totalPrice, shippingMethod }) {
+async function handleOrderConfirmed(chatId, { customerName, phone, address, products, totalPrice, shippingMethod, quantity }) {
   let appended = null;
   let mergedRowNumber = null;
   try {
@@ -853,7 +853,7 @@ async function handleOrderConfirmed(chatId, { customerName, phone, address, prod
         // anyway now, alongside the Targeted_Clients read-then-upsert below,
         // rather than carving it out, since both belong to one atomic-in-intent
         // "record this confirmed order" sequence for this chatId.
-        appended = await googleSheets.appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod });
+        appended = await googleSheets.appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod, quantity });
       }
 
       const rows = await googleSheets.getTargetedClientsRows();

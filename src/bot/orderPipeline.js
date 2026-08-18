@@ -321,9 +321,31 @@ async function runStalledOrderEscalationCheck(sendMessageFn) {
 
 // --- 2. Confirmation Status = Hold (column J) ---
 
+// 2026-08-19 addition — confirmed live (chatId 88876412584107@lid, phone
+// 201055990502): a fresh Confirmed_Orders row went Hold -> this check's
+// confirm-ask in the very next 20s poll, landing just 27 seconds after
+// Sara's own conversational reply already sounded like the order was
+// finished ("شكراً ليكي... طلبك هيكون جاهز للتوصيل قريب") — a customer
+// reasonably reads two different "your order" messages that close together
+// as redundant, even though they're tracking genuinely different things
+// (Sara's own tone vs. the Sheet's real Confirmation Status). A short grace
+// window after the row's own creation Date gives that first reply room to
+// land and be read before the deterministic ask follows up, without
+// meaningfully delaying real order processing — a merged-draft row reopened
+// to Hold (see campaignWorker.js) keeps its ORIGINAL creation Date, which is
+// already well past this window by the time that happens, so this never
+// delays a re-ask after an order gets a second item added to it.
+const ORDER_CONFIRMATION_ASK_GRACE_MS = 2 * 60 * 1000;
+
 async function runOrderConfirmationRequestCheck(sendMessageFn, resolvePhoneToChatIdFn) {
   const rows = await googleSheets.getConfirmedOrdersPipelineRows();
-  const due = rows.filter((r) => r.confirmationStatus === 'Hold' && !(state.get(r.rowNumber) || {}).confirmationAskSent);
+  const now = Date.now();
+  const due = rows.filter((r) => {
+    if (r.confirmationStatus !== 'Hold') return false;
+    if ((state.get(r.rowNumber) || {}).confirmationAskSent) return false;
+    const createdAt = Date.parse(r.date);
+    return !Number.isFinite(createdAt) || now - createdAt >= ORDER_CONFIRMATION_ASK_GRACE_MS;
+  });
   if (due.length === 0) return;
 
   const phoneToChatId = await resolvePhoneToChatIdFn();
