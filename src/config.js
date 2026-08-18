@@ -34,12 +34,9 @@ const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   sessionPath: process.env.SESSION_PATH || './.wwebjs_auth',
   storeName: 'Beauty Hub October',
+  // 2026-08-11: down to a single one-shot cart-recovery message (see
+  // cartRecovery.js) — the old second-nudge delay/config is gone with it.
   cartNudgeDelayHours: parseFloat(process.env.CART_NUDGE_DELAY_HOURS) || 3,
-  // Second, sweeter nudge if the first one got no reply — measured from
-  // nudgeSentAt (when the FIRST nudge went out), not from the original idle
-  // time, so it's genuinely "24h after we last reached out", not "24h after
-  // they went idle" (which the first nudge may have already covered).
-  cartNudgeSecondDelayHours: parseFloat(process.env.CART_NUDGE_SECOND_DELAY_HOURS) || 24,
   adminWhatsappNumber: (process.env.ADMIN_WHATSAPP_NUMBER || '').trim(),
   // Shared secret required in the X-Reload-Token header to call
   // GET /reload-products — that endpoint triggers a Google Sheets API call,

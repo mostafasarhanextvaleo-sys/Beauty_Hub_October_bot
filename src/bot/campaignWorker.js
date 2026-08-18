@@ -6,13 +6,42 @@ const { getSession, updateSession } = require('./conversationMemory');
 const productMatcher = require('./productMatcher');
 const { runExclusive } = require('../utils/chatLock');
 const adLeadDetector = require('./adLeadDetector');
+const { parsePriceToNumber } = require('../utils/invoiceGenerator');
+
+// 2026-08-12 (store owner directive): campaign TEST_TRIGGER sends used to go
+// only to config.adminWhatsappNumber (201098175119). A second, fixed
+// recipient the owner wants every test send mirrored to — scoped to this
+// one feature only, deliberately not folded into adminWhatsappNumber, which
+// is also used for real customer-facing admin alerts (order completions,
+// unmatched-product needs, error/health alerts) elsewhere in this codebase
+// that the owner never asked to duplicate here.
+const CAMPAIGN_TEST_TRIGGER_SECONDARY_NUMBER = '201156630487';
+
+// 2026-08-12 (store owner directive): these two numbers are the owner's own
+// admin/test devices (the same ones above — Main = adminWhatsappNumber,
+// Secondary = CAMPAIGN_TEST_TRIGGER_SECONDARY_NUMBER) and must never be
+// affected by any of the mechanisms this file applies to *real customers*:
+// the hard Blocked list, Opt-Out tracking, Bot Paused, and the per-contact
+// touch cap. Those mechanisms exist to protect real customers' consent and
+// this bot's WhatsApp standing — they were never meant to catch the owner's
+// own repeated test sends. Scoped to exactly these two numbers, not a
+// general "admin bypass", so it can't silently grow to cover a real
+// customer's number later.
+const PROTECTED_TEST_NUMBERS = new Set([config.adminWhatsappNumber, CAMPAIGN_TEST_TRIGGER_SECONDARY_NUMBER].filter(Boolean));
+
+// Accepts a raw phone number or a WhatsApp chatId (`<digits>@c.us`/`@lid`)
+// and strips everything down to bare digits so it can be compared against
+// PROTECTED_TEST_NUMBERS regardless of which form the caller has on hand.
+function normalizePhoneDigits(value) {
+  return String(value || '').replace(/@.*/, '').replace(/\D/g, '');
+}
+
+function isProtectedTestNumber(...values) {
+  return values.some((v) => PROTECTED_TEST_NUMBERS.has(normalizePhoneDigits(v)));
+}
 
 const SEND_INTERVAL_MS = 6 * 60 * 1000; // per-message spacing once CAMPAIGN_STATUS=PUSH
 const TEST_TRIGGER_POLL_MS = 20 * 1000; // separate, fast poll — a single self-send has no ban-risk to pace
-// Never re-blast a non-responder — same lesson as cartRecovery.js's
-// MAX_CONSECUTIVE_NUDGE_FAILURES fix (2026-07-30): retrying a silent contact
-// forever is both a wasted send and a ban-risk contributor.
-const MAX_TOUCHES_PER_CONTACT = 1;
 // Mirrors llmAgent.js's MAX_HISTORY_TURNS — kept as a separate constant
 // rather than importing that one since it's a private, unexported detail of
 // llmAgent.js's own turn-pushing helper, not a shared config value.
@@ -23,7 +52,7 @@ const CAMPAIGN_HISTORY_CAP = 40;
 // switch back. Derived from existing sentAt timestamps rather than a new
 // counter, so it needs no extra state and survives restarts (which happen
 // often on this box) without losing count.
-const DAILY_SEND_LIMIT = parseInt(process.env.CAMPAIGN_DAILY_SEND_LIMIT, 10) || 20;
+const DAILY_SEND_LIMIT = parseInt(process.env.CAMPAIGN_DAILY_SEND_LIMIT, 10) || 50; // raised from 20, 2026-08-12 store owner directive
 
 function toWhatsAppJid(phoneOrJid) {
   return phoneOrJid.includes('@') ? phoneOrJid : `${phoneOrJid}@c.us`;
@@ -161,10 +190,9 @@ function appendOfferToSessionHistory(chatId, offerText, offerProduct) {
     // over from an old, unrelated conversation thread must not immediately
     // sabotage it by tripping the human-handoff threshold on the customer's
     // very next reply. Also clears a stale handoff flag for the same reason:
-    // this lead already passed the P0 objection/already-ordered filters (see
-    // classifyLeadForCampaign) before ever reaching a send, so nothing about
-    // THIS fresh message should still be silenced by a leftover flag from
-    // something unrelated.
+    // this is a fresh, deliberate outreach the owner just triggered, so
+    // nothing about THIS fresh message should still be silenced by a
+    // leftover flag from something unrelated.
     noProgressTurns: 0,
     humanHandover: false,
     humanHandoffAt: null,
@@ -246,18 +274,50 @@ const capturedChatIds = new Set();
 const CONTACT_FLAGS_REFRESH_MS = 30 * 1000;
 let pausedChatIds = new Set();
 let blockedChatIds = new Set();
+// The two protected numbers' real chatIds are usually opaque WhatsApp "LID"
+// ids (privacy-mode contacts) whose digits don't contain the actual phone
+// number — isProtectedTestNumber(chatId) alone can't recognize those. Same
+// fix as blockedChatIds/pausedChatIds above: cross-reference each
+// Targeted_Clients row's own phoneNumber column (which IS the resolved real
+// phone) to build a lookup keyed by the row's actual chatId.
+let protectedChatIds = new Set();
 
 async function refreshContactFlags() {
   const rows = await googleSheets.getTargetedClientsRows();
-  pausedChatIds = new Set(rows.filter((r) => r.botPaused).map((r) => r.chatId));
-  blockedChatIds = new Set(rows.filter((r) => r.blocked).map((r) => r.chatId));
+  // Protected numbers are excluded here even if the Sheet itself has them
+  // marked Paused/Blocked (e.g. a stale row from before this protection
+  // existed) — see isProtectedTestNumber's header comment.
+  pausedChatIds = new Set(
+    rows.filter((r) => r.botPaused && !isProtectedTestNumber(r.chatId, r.phoneNumber)).map((r) => r.chatId)
+  );
+  blockedChatIds = new Set(
+    rows.filter((r) => r.blocked && !isProtectedTestNumber(r.chatId, r.phoneNumber)).map((r) => r.chatId)
+  );
+  protectedChatIds = new Set(
+    rows.filter((r) => isProtectedTestNumber(r.chatId, r.phoneNumber)).map((r) => r.chatId)
+  );
+}
+
+// 2026-08-12 (store owner directive): exempts the two protected numbers from
+// the human-handoff cooldown (conversationMemory.js) and its related
+// session.humanHandover flag (cartRecovery.js) — the same "owner's own
+// admin/test device, not a real customer" reasoning as Blocked/Opt-Out/
+// Bot-Paused above, just for a different mechanism. Checked at each call
+// site (whatsapp/client.js, cartRecovery.js, orderPipeline.js) rather than
+// inside conversationMemory.js itself, to avoid a circular require
+// (conversationMemory.js has no existing dependency on campaignWorker.js).
+function isProtectedContact(chatId) {
+  if (isProtectedTestNumber(chatId)) return true;
+  return protectedChatIds.has(chatId);
 }
 
 function isBotPausedForContact(chatId) {
+  if (isProtectedTestNumber(chatId)) return false;
   return pausedChatIds.has(chatId);
 }
 
 function isContactBlocked(chatId) {
+  if (isProtectedTestNumber(chatId)) return false;
   return blockedChatIds.has(chatId);
 }
 
@@ -347,36 +407,25 @@ async function runCampaignTick(sendMessageFn) {
     return;
   }
 
-  // 2026-08-06 fix: Blocked/Bot-Paused contacts were never excluded from
-  // the automated rotation before — only the live inbound-message handler
-  // checked those flags. A plain filter here (not a classifyLeadForCampaign
-  // block+reclassify) is deliberate: Bot Paused is often temporary, and
-  // reclassifying a paused row's campaignStatus away from PENDING would
-  // strand it there even after the owner unpauses, since nothing would ever
-  // move it back. Filtering means it naturally re-enters candidacy the
-  // moment the flag clears, with no Sheet write needed either way.
-  const candidates = rows.filter(
-    (r) => r.campaignStatus === 'PENDING' && !r.optOut && !r.botPaused && !r.blocked && r.touches < MAX_TOUCHES_PER_CONTACT
+  // 2026-08-12 (store owner directive): broadcast mode — every row in
+  // Targeted_Clients gets the active campaign exactly once, sequentially in
+  // sheet order (top to bottom), regardless of prior order history or past
+  // replies/interactions. This deliberately REMOVES the previous
+  // already-ordered and objection-keyword exclusions (classifyLeadForCampaign
+  // is no longer consulted here — it's kept exported for the one-time audit
+  // script that still uses it, see its own header comment). campaignStatus
+  // !== 'OFFER_SENT' is now the only "already sent this round" gate — a row
+  // is eligible again only if the owner manually resets its status away from
+  // OFFER_SENT. Opt-Out/Bot-Paused/Blocked remain hard boundaries (a
+  // customer's explicit request to stop, or the owner's own standing
+  // decision about that contact) — not something a bulk-send directive
+  // overrides — except for the two numbers isProtectedTestNumber covers
+  // (the owner's own admin/test devices).
+  const next = rows.find(
+    (r) =>
+      r.campaignStatus !== 'OFFER_SENT' &&
+      (isProtectedTestNumber(r.chatId, r.phoneNumber) || (!r.optOut && !r.botPaused && !r.blocked))
   );
-  let next = null;
-  for (const row of candidates) {
-    const classification = classifyLeadForCampaign(row);
-    if (!classification.block) {
-      next = row;
-      break;
-    }
-    // Locked per-chatId (2026-08-03 concurrency fix) — this is a
-    // read-modify-write against the same Targeted_Clients row that
-    // handleInboundMessage/captureInboundLead/handleOrderConfirmed can also
-    // write to for this same chatId; without a shared lock, whichever of
-    // those write calls lands last silently clobbers the others (verified:
-    // upsertTargetedClient does a full read-then-write with no version
-    // check). See client.js's runExclusive usage for the matching per-chatId
-    // lock on the message-handling side.
-    // eslint-disable-next-line no-await-in-loop
-    await runExclusive(row.chatId, () => googleSheets.upsertTargetedClient(row.chatId, { campaignStatus: classification.status }));
-    logger.info(`Excluded ${row.chatId} from the automated campaign (${classification.reason}) — reclassified as ${classification.status}.`);
-  }
   if (!next) return;
 
   const offer = pickOfferForLead(next, activeOffers);
@@ -413,6 +462,19 @@ async function runCampaignTick(sendMessageFn) {
 // single-panel layout's one TEST_TRIGGER). Handles each row that's set to
 // SEND in turn; sequential (not Promise.all) so a burst of admin test-sends
 // can't race each other into overlapping WhatsApp sends.
+//
+// 2026-08-12: now fans out to TWO recipients — config.adminWhatsappNumber
+// (the "main" number) and CAMPAIGN_TEST_TRIGGER_SECONDARY_NUMBER — also
+// sequential per offer, same race-avoidance reasoning. TEST_TRIGGER only
+// clears (and LAST_TEST_SENT_AT only gets stamped) once EVERY configured
+// recipient has confirmed-succeeded; if any one recipient fails, the flag
+// stays at SEND so the next poll retries — same "never silently drop a
+// failed send" rule the previous single-recipient version already followed,
+// just evaluated across the whole recipient list instead of one send. A
+// retry in that case may re-send to a recipient who already got it (no
+// per-recipient sent-state is tracked, matching how simple this test-only
+// feature already was) — an accepted, low-stakes tradeoff for a
+// staff-triggered manual test send, not a real customer-facing message.
 async function runTestTriggerCheck(sendMessageFn) {
   const offers = await googleSheets.getOffersCampaignRows();
   const triggered = offers.filter((o) => o.testTrigger === 'SEND');
@@ -425,25 +487,37 @@ async function runTestTriggerCheck(sendMessageFn) {
     return;
   }
 
+  const recipients = [...new Set([config.adminWhatsappNumber, CAMPAIGN_TEST_TRIGGER_SECONDARY_NUMBER])];
+
   for (const offer of triggered) {
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      await sendMessageFn(toWhatsAppJid(config.adminWhatsappNumber), offer.offerText || `(OFFER_TEXT فارغ لـ ${offer.offerId})`);
-      // eslint-disable-next-line no-await-in-loop
-      await googleSheets.setOfferLastTestSentAt(offer.rowNumber, new Date().toISOString());
-      // 2026-08-03 fix: only clear TEST_TRIGGER on a confirmed successful
-      // send — this used to sit in a `finally` and clear unconditionally,
-      // so a send that failed only because WhatsApp wasn't ready yet (e.g.
-      // right after a restart) reset the flag to IDLE with nothing actually
-      // sent, looking like success to the admin with no retry. Leaving it at
-      // SEND on failure keeps it visibly pending and lets the next 20s poll
-      // retry it.
-      // eslint-disable-next-line no-await-in-loop
-      await googleSheets.clearOfferTestTrigger(offer.rowNumber);
-      logger.success(`Test campaign offer "${offer.offerId}" sent to admin (${config.adminWhatsappNumber}).`);
-    } catch (err) {
-      logger.error(`Failed to send test campaign offer "${offer.offerId}" to admin — leaving TEST_TRIGGER=SEND so the next poll retries it.`, err);
+    const text = offer.offerText || `(OFFER_TEXT فارغ لـ ${offer.offerId})`;
+    const failures = [];
+    for (const recipient of recipients) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await sendMessageFn(toWhatsAppJid(recipient), text);
+        logger.success(`Test campaign offer "${offer.offerId}" sent to ${recipient}.`);
+      } catch (err) {
+        failures.push(recipient);
+        logger.error(`Failed to send test campaign offer "${offer.offerId}" to ${recipient}.`, err);
+      }
     }
+    if (failures.length > 0) {
+      logger.error(
+        `Test campaign offer "${offer.offerId}" failed for ${failures.join(', ')} — leaving TEST_TRIGGER=SEND so the next poll retries it.`
+      );
+      continue; // eslint-disable-line no-continue
+    }
+    // 2026-08-03 fix (still applies with multiple recipients): only clear
+    // TEST_TRIGGER once every send is a confirmed success — a send that
+    // failed only because WhatsApp wasn't ready yet (e.g. right after a
+    // restart) must never reset the flag to IDLE with nothing actually
+    // sent, which would look like success with no retry.
+    // eslint-disable-next-line no-await-in-loop
+    await googleSheets.setOfferLastTestSentAt(offer.rowNumber, new Date().toISOString());
+    // eslint-disable-next-line no-await-in-loop
+    await googleSheets.clearOfferTestTrigger(offer.rowNumber);
+    logger.success(`Test campaign offer "${offer.offerId}" delivered to all ${recipients.length} recipient(s) (${recipients.join(', ')}).`);
   }
 }
 
@@ -470,11 +544,12 @@ async function runSendNowCheck(sendMessageFn) {
 
   for (const row of triggered) {
     try {
-      if (row.optOut) {
+      const isProtected = isProtectedTestNumber(row.chatId, row.phoneNumber);
+      if (row.optOut && !isProtected) {
         // Opt-out is a hard, trust-sensitive boundary — a manual override
         // still must never message someone who explicitly asked to stop.
         logger.warn(`Send Now was set for ${row.chatId}, but they've opted out — not sending.`);
-      } else if (row.botPaused || row.blocked) {
+      } else if ((row.botPaused || row.blocked) && !isProtected) {
         // 2026-08-06 fix: same hard-boundary reasoning as optOut above —
         // Blocked/Bot-Paused is the owner's own standing decision about this
         // contact, and a manual per-row trigger shouldn't be able to bypass
@@ -568,7 +643,9 @@ async function handleInboundMessage(chatId, text) {
         return;
       }
 
-      const isOptOut = /وقف الرسائل|مش عايز رسايل|الغاء الاشتراك|unsubscribe/i.test(normalized);
+      const isOptOut =
+        /وقف الرسائل|مش عايز رسايل|الغاء الاشتراك|unsubscribe/i.test(normalized) &&
+        !isProtectedTestNumber(chatId, row.phoneNumber);
       if (isOptOut) {
         await googleSheets.upsertTargetedClient(chatId, {
           campaignStatus: 'DECLINED',
@@ -684,20 +761,101 @@ async function tagAdLead(chatId, { phone, senderName, text } = {}) {
   }
 }
 
+// How long an existing Confirmed_Orders row that hasn't reached Confirmation
+// Status 'Confirmed' (still 'Hold' — pipeline hasn't sent the confirm-ask
+// yet — or 'Pending' — sent, awaiting the customer's reply) counts as the
+// SAME still-open draft rather than an unrelated older order. Reuses
+// llmAgent.js's own NEW_EPISODE_GAP_MS value (6h) rather than inventing a
+// new threshold — this is the same "same conversation episode" boundary
+// already established elsewhere in this codebase.
+const OPEN_DRAFT_EPISODE_GAP_MS = 6 * 60 * 60 * 1000;
+
+// 2026-08-11 (store owner directive): a customer can add/change an item
+// while their order is still an open draft — LLM-level order_data.confirmed
+// fires once per distinct product per session (see llmAgent.js's
+// isAlreadyConfirmedProduct, added 2026-08-06 to let a genuine repeat
+// purchase in one chat go through) — but the Sheet-level Confirmation
+// Status only becomes 'Confirmed' after a SEPARATE explicit reply to the
+// order-pipeline's confirm-ask (see orderPipeline.js's Hold->Pending->
+// Confirmed flow). A second distinct product confirmed inside that window
+// used to always create a second Confirmed_Orders row via appendConfirmedOrder,
+// splitting one real order episode into two rows the customer never
+// intended as separate orders. This finds that still-open row, if any.
+async function findOpenDraftOrderRow(phone) {
+  if (!phone) return null;
+  const rows = await googleSheets.getConfirmedOrdersPipelineRows();
+  const now = Date.now();
+  const openRows = rows.filter((r) => {
+    if (r.phone !== phone) return false;
+    if (!['', 'Hold', 'Pending'].includes(r.confirmationStatus)) return false;
+    const ts = new Date(r.date).getTime();
+    return Number.isFinite(ts) && now - ts >= 0 && now - ts <= OPEN_DRAFT_EPISODE_GAP_MS;
+  });
+  if (openRows.length === 0) return null;
+  // Most recent, if more than one somehow qualifies — shouldn't happen once
+  // this merge path is live, but pre-existing historical rows could.
+  return openRows.reduce((latest, r) => (r.rowNumber > latest.rowNumber ? r : latest));
+}
+
 // Called from whatsapp/client.js right after a real order gets logged to
 // Order History — additive only, never affects the real order flow.
-async function handleOrderConfirmed(chatId, { customerName, phone, address, products, totalPrice }) {
+//
+// 2026-08-19 audit fix: the Confirmed_Orders read-modify-write below (draft
+// lookup + merge-or-append + the 'Hold' reopen) used to run with no lock at
+// all, while orderPipeline.js's writes to the exact same Confirmation Status
+// cell for the exact same row are locked via runExclusive(chatId, ...) (see
+// its own 2026-08-12 comments). Since this function is itself called
+// fire-and-forget (never awaited) from whatsapp/client.js right after the
+// outer per-chatId lock for that message turn has already been released,
+// its Sheets calls could freely interleave with orderPipeline.js's locked
+// ones on the same chatId. Confirmed live failure shape: a customer adds a
+// second item within the same open-draft window while orderPipeline's
+// confirm-ask for the first item is still in flight — this function's
+// unlocked setConfirmationStatus(row, 'Hold') could land, then get silently
+// overwritten by orderPipeline's locked write finishing after it, losing the
+// 'Hold' reopen and leaving the merged order never re-confirmed. Wrapping
+// this function's entire Confirmed_Orders + Targeted_Clients sequence in the
+// SAME runExclusive(chatId, ...) key orderPipeline.js already uses closes
+// this — chatLock's lock is a process-global per-key queue (see
+// utils/chatLock.js), so any writer using this same chatId, from any file,
+// is now correctly serialized against every other one.
+async function handleOrderConfirmed(chatId, { customerName, phone, address, products, totalPrice, shippingMethod }) {
   let appended = null;
+  let mergedRowNumber = null;
   try {
-    // appendConfirmedOrder is append-only (a brand-new row every call, no
-    // read-modify-write on an existing one) so it doesn't need this lock;
-    // only the Targeted_Clients read-then-upsert below does. Locked
-    // per-chatId (2026-08-03) for the same reason as the other campaignWorker
-    // writers — this is called fire-and-forget from inside whatsapp/client.js's
-    // own per-chatId lock (safe: see that call site's comment), so this can
-    // never deadlock against it.
-    appended = await googleSheets.appendConfirmedOrder({ customerName, phone, address, products, totalPrice });
     await runExclusive(chatId, async () => {
+      const openDraft = await findOpenDraftOrderRow(phone);
+      // If the "new" product is already literally in the draft's Products
+      // text, this isn't a genuine addition (e.g. a stale/replayed
+      // confirmation) — fall through to the normal append path instead, whose
+      // own (phone, products, totalPrice, 10-min window) dedup guard already
+      // handles that case correctly rather than this merge logic guessing.
+      if (openDraft && products && !openDraft.products.includes(products)) {
+        const mergedProducts = openDraft.products ? `${openDraft.products} + ${products}` : products;
+        const mergedTotal = String(parsePriceToNumber(openDraft.totalPrice) + parsePriceToNumber(totalPrice));
+        await googleSheets.updateConfirmedOrderItems(openDraft.rowNumber, { products: mergedProducts, totalPrice: mergedTotal });
+        mergedRowNumber = openDraft.rowNumber;
+        logger.success(
+          `Merged an additional item into still-open draft order row ${openDraft.rowNumber} for ${chatId} (now: "${mergedProducts}", ${mergedTotal}) instead of creating a new Confirmed_Orders row.`
+        );
+        if (openDraft.confirmationStatus === 'Pending') {
+          // The customer already got asked to confirm the OLD, incomplete item
+          // list — reopen to 'Hold' so orderPipeline.js's next poll sends a
+          // fresh confirm-ask reflecting the real, merged order instead of
+          // silently leaving them to confirm something that's now out of date.
+          await googleSheets.setConfirmationStatus(openDraft.rowNumber, 'Hold');
+          // eslint-disable-next-line global-require
+          require('./orderPipeline').resetConfirmationAskState(openDraft.rowNumber);
+        }
+      } else {
+        // appendConfirmedOrder is append-only (a brand-new row every call, no
+        // read-modify-write on an existing one) — kept inside this same lock
+        // anyway now, alongside the Targeted_Clients read-then-upsert below,
+        // rather than carving it out, since both belong to one atomic-in-intent
+        // "record this confirmed order" sequence for this chatId.
+        appended = await googleSheets.appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod });
+      }
+
       const rows = await googleSheets.getTargetedClientsRows();
       const row = rows.find((r) => r.chatId === chatId);
       // Unlike the old behavior, don't skip when there's no pre-existing row —
@@ -718,19 +876,26 @@ async function handleOrderConfirmed(chatId, { customerName, phone, address, prod
     // Invoice link attachment is a separate, best-effort add-on (see
     // invoiceService.js) — deliberately not awaited into the same try block
     // above, so a failed/slow Sheets write here can never delay or affect
-    // the order logging that already succeeded.
-    if (appended && appended.rowNumber) {
+    // the order logging that already succeeded. Targets the merged row when
+    // this call merged into an existing draft, so the SAME invoice link now
+    // reflects the complete, up-to-date item list and total.
+    const targetRowNumber = mergedRowNumber || (appended && appended.rowNumber);
+    if (targetRowNumber) {
       invoiceService
-        .generateAndAttachInvoice({ rowNumber: appended.rowNumber })
+        .generateAndAttachInvoice({ rowNumber: targetRowNumber })
         .catch((err) => logger.error(`Invoice link attachment kickoff failed for ${chatId}.`, err));
+    }
 
-      // 2026-08-09 order-management pipeline (see orderPipeline.js) — sets
-      // the new I:K columns' defaults ('', 'Hold', 'Processing') on this
-      // brand-new row only. Same best-effort, non-blocking shape as the
-      // invoice kickoff above: a failure here must never retroactively
-      // affect the order row itself. orderPipeline.js's own 20s poll picks
-      // up the fresh 'Hold' row and sends the confirmation-request message;
-      // this function does not send anything itself.
+    // 2026-08-09 order-management pipeline (see orderPipeline.js) — sets the
+    // new I:K columns' defaults ('', 'Hold', 'Processing') on this brand-new
+    // row only. Same best-effort, non-blocking shape as the invoice kickoff
+    // above: a failure here must never retroactively affect the order row
+    // itself. orderPipeline.js's own 20s poll picks up the fresh 'Hold' row
+    // and sends the confirmation-request message; this function does not
+    // send anything itself. Deliberately NOT run for a merged row — it
+    // already has real I:K state (possibly already 'Sent'/'Processing')
+    // that resetting to these defaults would wrongly wipe out.
+    if (appended && appended.rowNumber) {
       googleSheets
         .initializeOrderPipelineColumns(appended.rowNumber)
         .catch((err) => logger.error(`Order-pipeline column init failed for ${chatId} (row ${appended.rowNumber}).`, err));
@@ -772,4 +937,8 @@ module.exports = {
   startPausedContactsAutoRefresh,
   isBotPausedForContact,
   isContactBlocked,
+  // 2026-08-12 — checked by whatsapp/client.js, cartRecovery.js, and
+  // orderPipeline.js alongside the human-handoff cooldown/humanHandover
+  // flag, see its own header comment above.
+  isProtectedContact,
 };

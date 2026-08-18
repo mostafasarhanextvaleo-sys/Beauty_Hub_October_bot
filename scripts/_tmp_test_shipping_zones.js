@@ -131,6 +131,47 @@ const { orderConfirmationSummary } = require('../src/bot/prompts');
     console.log('PASS: orderConfirmationSummary shows the real computed fee, or omits the line entirely when unmatched.');
   }
 
+  // --- 7. 2026-08-19: standard duration widened to 3-4 days, Same-Day
+  // Express added for Cairo/Giza only (100 EGP flat, replaces the 65 EGP
+  // standard fee — not an add-on). ---
+  {
+    const cairoZone = matchShippingZone('الدقي');
+    assert.ok(cairoZone, 'Cairo/Giza address must still resolve to a zone');
+    assert.strictEqual(cairoZone.feeEGP, 65, 'standard Cairo/Giza fee must be unchanged');
+    assert.strictEqual(cairoZone.expressFeeEGP, 100, 'Cairo/Giza must expose a 100 EGP express fee');
+
+    for (const zone of SHIPPING_ZONES) {
+      if (zone.id === 'cairo_giza') continue; // eslint-disable-line no-continue
+      assert.ok(!zone.expressFeeEGP, `BUG: zone ${zone.id} must NOT have an express fee — Same-Day Express is Cairo/Giza only`);
+    }
+    console.log('PASS: Same-Day Express (100 EGP) is present only on the Cairo/Giza zone, no other zone.');
+
+    const noAddr = buildSystemPrompt([], null, { history: [] }, false, false, null, [], false, null, false, null);
+    assert.ok(noAddr.includes('3-4 أيام'), 'expected the widened 3-4 day standard duration in the general policy text');
+    assert.ok(noAddr.includes('Same-Day Express'), 'expected the general policy text to describe the Same-Day Express option');
+    assert.ok(noAddr.includes('القاهرة والجيزة'), 'expected the policy text to scope Same-Day Express to Cairo/Giza');
+
+    const cairoPrompt = buildSystemPrompt([], null, { history: [] }, false, false, null, [], false, null, false, 'الدقي الجيزة');
+    assert.ok(cairoPrompt.includes('تكلفة الشحن 65 جنيه'), 'expected the grounded standard Cairo/Giza fee to still be injected');
+    assert.ok(cairoPrompt.includes('Same-Day Express'), 'expected the grounded section to mention Same-Day Express for a real Cairo/Giza address');
+    assert.ok(cairoPrompt.includes('100 جنيه'), 'expected the grounded section to state the real 100 EGP express fee');
+
+    // Note: SHIPPING_POLICY's general reference table (always present in
+    // every prompt, regardless of address) legitimately describes Same-Day
+    // Express as a store-wide fact, so the bare phrase "Same-Day Express"
+    // alone appears everywhere — that's correct, not a bug (the policy text
+    // also explicitly instructs never to OFFER it outside Cairo/Giza). What
+    // must never happen is the PER-ADDRESS GROUNDED section (the thing that
+    // actually tells Sara "this specific customer has this option") offering
+    // it for a non-Cairo/Giza zone — checked via its distinguishing phrase.
+    const octoberPrompt = buildSystemPrompt([], null, { history: [] }, false, false, null, [], false, null, false, 'اكتوبر الحي الاول');
+    assert.ok(
+      !octoberPrompt.includes('عندها كمان اختيار الشحن السريع'),
+      'BUG: a non-Cairo/Giza zone (October) must never have the grounded section offer Same-Day Express'
+    );
+    console.log('PASS: buildSystemPrompt only grounds Same-Day Express for a real, matched Cairo/Giza address — never for October or before an address is known.');
+  }
+
   console.log('\nALL SHIPPING ZONE TESTS PASSED');
   process.exit(0);
 })().catch((err) => {

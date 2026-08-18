@@ -42,6 +42,11 @@ const rows = [
   { rowNumber: 900001, date: '2026-08-10T00:00:00.000Z', customerName: 'سارة', phone: '201000000001', address: 'القاهرة', products: 'كريم', totalPrice: '300', invoiceLink: '', sendInvoiceAction: 'Sent', confirmationStatus: 'Confirmed', orderStatus: 'Delivered' },
   { rowNumber: 900002, date: '2026-08-10T00:00:00.000Z', customerName: 'هالة', phone: '201000000002', address: 'الجيزة', products: 'سيروم', totalPrice: '450', invoiceLink: '', sendInvoiceAction: 'Sent', confirmationStatus: 'Confirmed', orderStatus: 'Delivered' },
   { rowNumber: 900003, date: '2026-08-10T00:00:00.000Z', customerName: 'منى', phone: '201000000003', address: 'أكتوبر', products: 'غسول', totalPrice: '150', invoiceLink: '', sendInvoiceAction: 'Sent', confirmationStatus: 'Confirmed', orderStatus: 'Processing' },
+  // 2026-08-19 addition — Same-Day Express regression case: same القاهرة/
+  // الجيزة zone as row 1 (65 EGP standard), but Shipping Method is Express
+  // (100 EGP flat, not an add-on) — orderTotal must reflect that, not the
+  // standard zone fee.
+  { rowNumber: 900004, date: '2026-08-19T00:00:00.000Z', customerName: 'نور', phone: '201000000004', address: 'القاهرة', products: 'سيروم', totalPrice: '400', invoiceLink: '', sendInvoiceAction: 'Sent', confirmationStatus: 'Confirmed', orderStatus: 'Delivered', shippingMethod: 'express' },
 ];
 
 const googleSheetsStub = {
@@ -63,6 +68,7 @@ require.cache[conversationMemoryPath] = { id: conversationMemoryPath, filename: 
 const campaignWorkerStub = {
   isBotPausedForContact() { return false; },
   isContactBlocked(chatId) { return chatId === 'BLOCKED@lid'; },
+  isProtectedContact() { return false; },
 };
 require.cache[campaignWorkerPath] = { id: campaignWorkerPath, filename: campaignWorkerPath, loaded: true, exports: campaignWorkerStub };
 
@@ -75,6 +81,7 @@ const orderPipeline = require('../src/bot/orderPipeline');
 const phoneToChatId = new Map([
   ['201000000001', 'BLOCKED@lid'],
   ['201000000002', 'NORMAL@lid'],
+  ['201000000004', 'NORMAL2@lid'],
 ]);
 const sentMessages = [];
 const sendMessageFn = async (chatId, text) => sentMessages.push({ chatId, text });
@@ -84,17 +91,20 @@ const resolvePhoneToChatIdFn = async () => phoneToChatId;
   // --- 1st poll ---
   await orderPipeline.runOrderDeliveredCheck(sendMessageFn, resolvePhoneToChatIdFn);
 
-  assert.strictEqual(upsertTrustedClientCalls.length, 2, 'both Delivered rows (001, 002) should sync — the Processing row (003) must not');
+  assert.strictEqual(upsertTrustedClientCalls.length, 3, 'all three Delivered rows (001, 002, 004) should sync — the Processing row (003) must not');
   const call1 = upsertTrustedClientCalls.find((c) => c.phone === '201000000001');
   const call2 = upsertTrustedClientCalls.find((c) => c.phone === '201000000002');
+  const call4 = upsertTrustedClientCalls.find((c) => c.phone === '201000000004');
   assert.ok(call1, 'the Blocked contact must still be synced to Trusted_Clients even though it cannot be messaged');
   assert.strictEqual(call1.orderTotal, 365, 'row 1: 300 (product) + 65 (cairo_giza zone fee for القاهرة) = 365');
   assert.strictEqual(call1.address, 'القاهرة', 'address should be passed through as-is');
   assert.strictEqual(call1.orderDate, '2026-08-10T00:00:00.000Z', "orderDate should be passed through from the Confirmed_Orders row's own Date column");
   assert.strictEqual(call2.orderTotal, 515, 'row 2: 450 (product) + 65 (cairo_giza zone fee for الجيزة) = 515');
-  assert.strictEqual(sentMessages.length, 1, 'only the non-blocked Delivered contact should receive the rating-request DM');
-  assert.strictEqual(sentMessages[0].chatId, 'NORMAL@lid', 'the DM must go to the resolvable, non-blocked contact only');
-  console.log('PASS: 1st poll — Trusted_Clients loyalty sync (with correct shipping-inclusive totals) is independent of the messaging guard.');
+  assert.strictEqual(call4.orderTotal, 500, 'row 4 (Same-Day Express): 400 (product) + 100 (express fee, NOT the 65 standard zone fee) = 500');
+  assert.strictEqual(sentMessages.length, 2, 'both non-blocked Delivered contacts should receive the rating-request DM');
+  assert.ok(sentMessages.some((m) => m.chatId === 'NORMAL@lid'), 'the DM must go to the resolvable, non-blocked contact');
+  assert.ok(sentMessages.some((m) => m.chatId === 'NORMAL2@lid'), 'the express order contact must also get the DM');
+  console.log('PASS: 1st poll — Trusted_Clients loyalty sync (with correct shipping-inclusive totals, including Same-Day Express) is independent of the messaging guard.');
 
   // --- 2nd poll: nothing should re-fire ---
   upsertTrustedClientCalls.length = 0;

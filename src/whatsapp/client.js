@@ -405,6 +405,23 @@ function createClient() {
 
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: config.sessionPath }),
+    // 2026-08-11 incident: WhatsApp's live web.whatsapp.com frontend build
+    // changed and broke whatsapp-web.js@1.34.7's internal Store/WWebJS
+    // injection — the page loads and fully authenticates (confirmed live:
+    // the real chat list renders) but window.Store/window.WWebJS never
+    // appear, so the library's 'ready' event never fires and the bot never
+    // leaves "starting", even after multiple clean restarts. Without this
+    // pin, the default webVersion ('2.3000.1017054665', an old hardcoded
+    // library default not present in .wwebjs_cache/) never resolves from
+    // the local cache, so every connect silently falls through to
+    // fetching whatever WhatsApp serves live — there was no actual pinning
+    // happening despite .wwebjs_cache/ already holding every previously
+    // successful build. Pinned to the newest cached version confirmed to
+    // have completed a real 'ready' event (2026-08-10T20:51:18Z, per
+    // pm2 logs) via LocalWebCache's requestInterception path, sidestepping
+    // today's breaking live change entirely.
+    webVersion: '2.3000.1044858477',
+    webVersionCache: { type: 'local' },
     puppeteer: {
       headless: true,
       args: [
@@ -611,7 +628,11 @@ function createClient() {
         // BOT from acting on it. Checked before botControl.isPaused()
         // deliberately: this is a per-customer condition, that one is
         // global, and the more specific check should win first.
-        if (isHumanHandoffCooldownActive(getSession(message.from))) {
+        // 2026-08-12 (store owner directive): the two protected admin/test
+        // numbers must always get instant auto-replies, never auto-paused by
+        // this cooldown under any circumstances — see
+        // campaignWorker.isProtectedContact's header comment.
+        if (!campaignWorker.isProtectedContact(message.from) && isHumanHandoffCooldownActive(getSession(message.from))) {
           logger.info(`Ignoring message from ${phone} — human handoff cooldown active (started ${new Date(getSession(message.from).humanHandoffAt).toISOString()}).`);
           return;
         }
@@ -839,6 +860,10 @@ function createClient() {
               address: logEntry && logEntry.deliveryAddress,
               products: orderHistoryEntry.productName,
               totalPrice: orderHistoryEntry.price,
+              // 2026-08-19 addition — see llmAgent.js's buildLogEntryAndNotification,
+              // which sets this on logEntry from applied.orderData.shippingMethod
+              // (already re-verified against the real zone table there).
+              shippingMethod: logEntry && logEntry.shippingMethod,
             })
             .catch((err) => {
               logger.error('Campaign Confirmed_Orders logging failed (order itself was still logged normally).', err);

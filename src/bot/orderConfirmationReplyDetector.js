@@ -39,8 +39,31 @@ const ORDER_REJECTION_REPLY_PHRASES = [
 ];
 const ORDER_REJECTION_REPLY_WORDS = ['رفض', 'رفضت', 'لا', 'لأ', 'reject', 'rejected', 'cancel'];
 
+// 2026-08-19 audit fix — confirmed real failure shape: a customer replying
+// "تمام كده، بس مش هطلب دلوقتي" (fine, but I don't want to order right now)
+// contains the standalone word "تمام" and no ADJACENT "مش تمام" substring (the
+// negation and the confirmation word are in different clauses), so neither
+// ORDER_REJECTION_REPLY_PHRASES nor ORDER_REJECTION_REPLY_WORDS matched it —
+// isOrderConfirmationReply's bare word-match on "تمام" alone read this as a
+// real confirmation, and the caller (llmAgent.js) flipped a real
+// Confirmed_Orders row to 'Confirmed' for a customer who had just declined.
+// Rather than trying to enumerate every possible phrase ordering ("مش
+// هطلب", "مش عايزة اطلب", "لسه مش متأكدة"...), a genuine order confirmation
+// essentially never shares a message with a negation word at all — so a
+// confirmation word is only trusted when no negation word appears anywhere
+// else in the same message. Deliberately NOT added to
+// ORDER_REJECTION_REPLY_WORDS itself: that list drives isOrderRejectionReply,
+// which actively sets the row to 'Rejected' — "مش" alone is far too common in
+// unrelated Egyptian-Arabic replies (e.g. "مش عارفة العنوان بالظبط") to treat
+// as an affirmative rejection signal. Here it only WITHHOLDS a false
+// confirmation, falling through to the normal LLM flow (which asks the
+// customer to clarify) rather than mis-resolving the order either way.
+const CONFIRMATION_NEGATION_WORDS = ['مش', 'لا', 'لأ', 'مو'];
+
 function isOrderConfirmationReply(text) {
-  return containsWord(text, ORDER_CONFIRMATION_REPLY_WORDS);
+  if (!containsWord(text, ORDER_CONFIRMATION_REPLY_WORDS)) return false;
+  if (containsWord(text, CONFIRMATION_NEGATION_WORDS)) return false;
+  return true;
 }
 
 function isOrderRejectionReply(text) {

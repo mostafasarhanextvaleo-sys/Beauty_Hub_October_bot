@@ -25,8 +25,52 @@ const emailAlert = require('../utils/emailAlert');
 // widened to 3 retries/750ms (~5.6s total worst case) so a several-second DNS
 // hiccup gets absorbed instead of surfacing as a logged failure on every
 // independent Sheets operation polling at the time.
+// 2026-08-19 audit fix — every individual poller (campaign tick, test-trigger
+// check, Bot Paused/Blocked refresh, Send Invoice Action check, order-
+// confirmation check, stalled-order escalation, ...) already logs its own
+// WARN/ERROR on a Sheets failure, which is correct for that poller's own
+// retry-next-tick behavior but gives no aggregate signal — a real Sheets
+// outage cascades across a dozen of them at once (confirmed live: two
+// distinct multi-hour clusters this past week, ~1,440 error-log lines on the
+// worst day, self-healing before the 30-minute total-silence threshold below
+// ever tripped, since at least one poller usually still got a call through).
+// recordSheetsCallFailure below tracks failures from every sheetsCall
+// invocation, across every caller, in one shared sliding window, and fires a
+// SINGLE aggregated alert when they cluster — independent of and
+// complementary to checkStaleness' "nothing succeeded in 30 minutes" check
+// further down, which only catches TOTAL outages, not a bad-reliability
+// period with some calls still getting through.
+const SHEETS_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+const SHEETS_FAILURE_ALERT_THRESHOLD = 5;
+let recentSheetsCallFailures = [];
+
+function recordSheetsCallFailure(err) {
+  const now = Date.now();
+  recentSheetsCallFailures.push(now);
+  recentSheetsCallFailures = recentSheetsCallFailures.filter((ts) => now - ts <= SHEETS_FAILURE_WINDOW_MS);
+  if (recentSheetsCallFailures.length < SHEETS_FAILURE_ALERT_THRESHOLD) return;
+  const windowMinutes = Math.round(SHEETS_FAILURE_WINDOW_MS / 60000);
+  // emailAlert.sendAlert's own 15-minute per-alertType cooldown (see that
+  // file) is what actually prevents spam during a sustained outage — this
+  // can safely call it on every failure past the threshold without adding a
+  // second cooldown of its own, and a fresh email will still go out if the
+  // outage is still ongoing 15 minutes later.
+  emailAlert.sendAlert('google_sheets_repeated_failures', {
+    subject: '⚠️ Beauty Hub Bot — Google Sheets: repeated failures across multiple operations',
+    text:
+      `${recentSheetsCallFailures.length} separate Google Sheets API calls have failed within the last ${windowMinutes} minutes, ` +
+      `across whichever pollers/features happened to be running (campaign sends, order-pipeline checks, product refresh, etc. — this ` +
+      `alert doesn't distinguish which). Each individual failure is already being retried on its own normal schedule, so no customer-facing ` +
+      `action is needed immediately, but this pattern matches a real Sheets-side connectivity issue rather than one-off blips. ` +
+      `Last error: ${err && err.message ? err.message : err}`,
+  });
+}
+
 function sheetsCall(fn) {
-  return retryAsync(fn, { retries: 3, baseDelayMs: 750, isRetryable: isTransientError });
+  return retryAsync(fn, { retries: 3, baseDelayMs: 750, isRetryable: isTransientError }).catch((err) => {
+    recordSheetsCallFailure(err);
+    throw err;
+  });
 }
 
 const LEADS_SHEET_NAME = 'Leads';
@@ -272,6 +316,31 @@ const CONFIRMED_ORDERS_HEADERS = [
   // sheet by unfortunate coincidence only — different sheet, different
   // values, tracked independently.
   'Order Status',
+  // 2026-08-11 addition, pure column-ADDITION migration (same
+  // ensureHeaderRow backfill pattern as TRUSTED_CLIENTS_HEADERS above —
+  // safe on an already-populated sheet). Staff-typed EGP number, blank by
+  // default. When set, overrides shippingZones.matchShippingZone(address)'s
+  // computed fee for THIS order only, everywhere the fee is shown
+  // (invoiceGenerator.js) — same "deterministic code computes it, never
+  // guessed" grounding as the rest of the shipping system, just sourced
+  // from a manual per-order exception instead of the address lookup. A
+  // blank cell means "use the normal computed zone fee" (pre-existing
+  // behavior, unaffected).
+  'Shipping Fee Override',
+  // 2026-08-19 addition, same pure column-ADDITION migration pattern as
+  // 'Shipping Fee Override' above (ensureHeaderRow backfills it onto an
+  // already-populated sheet safely — existing rows just read as blank until
+  // touched). Written once, at order-creation time, by appendConfirmedOrder
+  // — reflects the customer's actual choice (captured in chat, resolved
+  // against the real zone table by llmAgent.js's resolveShippingMethod, so
+  // it's never anything other than a real Cairo/Giza express order or a
+  // standard one). invoiceGenerator.js and orderPipeline.js's Trusted_Clients
+  // loyalty calc both read this back to pick expressFeeEGP vs feeEGP for the
+  // real charged total — Shipping Fee Override (above) still takes priority
+  // over both when a staff member has set it, same as before this existed.
+  // Blank on any pre-existing row (created before this column did) reads as
+  // 'Standard' everywhere this is consumed — never treated as express.
+  'Shipping Method',
 ];
 
 const FEEDBACK_HEADERS = ['Date', 'Customer Name', 'Phone', 'Rating', 'Comments'];
@@ -1440,6 +1509,7 @@ async function formatConfirmedOrdersTab() {
   const sendInvoiceColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Send Invoice Action');
   const confirmationColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Confirmation Status');
   const orderStatusColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Order Status');
+  const shippingMethodColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Shipping Method');
 
   // Same setDataValidation/ONE_OF_LIST + TEXT_EQ conditional-color pattern
   // already used for Offers_Campaign's CAMPAIGN_STATUS/TEST_TRIGGER and
@@ -1465,12 +1535,14 @@ async function formatConfirmedOrdersTab() {
   const sendInvoiceRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: sendInvoiceColIndex, endColumnIndex: sendInvoiceColIndex + 1 };
   const confirmationRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: confirmationColIndex, endColumnIndex: confirmationColIndex + 1 };
   const orderStatusRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: orderStatusColIndex, endColumnIndex: orderStatusColIndex + 1 };
+  const shippingMethodRange = { sheetId, startRowIndex: 1, endRowIndex: DATA_TABLE_MAX_ROWS, startColumnIndex: shippingMethodColIndex, endColumnIndex: shippingMethodColIndex + 1 };
   const amber = { red: 0.95, green: 0.61, blue: 0.07 };
   const green = { red: 0.2, green: 0.66, blue: 0.33 };
   const gray = { red: 0.55, green: 0.55, blue: 0.55 };
   const blue = { red: 0.26, green: 0.52, blue: 0.96 };
   const cyan = { red: 0.05, green: 0.6, blue: 0.6 };
   const red = { red: 0.83, green: 0.18, blue: 0.18 };
+  const purple = { red: 0.48, green: 0.25, blue: 0.75 };
 
   const requests = [
     ...dataTableStyleRequests(sheetId, columnCount, hasExistingBanding),
@@ -1521,7 +1593,16 @@ async function formatConfirmedOrdersTab() {
     },
     dropdown(sendInvoiceRange, ['Send Invoice', 'Sent', 'Resend']),
     dropdown(confirmationRange, ['Hold', 'Pending', 'Confirmed', 'Rejected']),
-    dropdown(orderStatusRange, ['Processing', 'In Transit', 'Delivered']),
+    // 'Rejected' added 2026-08-11 (store owner directive) — orderPipeline.js
+    // now auto-syncs Order Status to 'Rejected' the moment Confirmation
+    // Status becomes 'Rejected' (chat rejection or a direct staff Sheet
+    // edit), so this needs to be a real selectable/colorable state here too,
+    // not just written as a plain string outside the dropdown's known list.
+    dropdown(orderStatusRange, ['Processing', 'In Transit', 'Delivered', 'Rejected']),
+    // 2026-08-19 — staff can also manually set/correct this via the dropdown
+    // (e.g. a phone order taken outside the chat flow); appendConfirmedOrder
+    // writes 'Standard'/'Express' automatically for chat-confirmed orders.
+    dropdown(shippingMethodRange, ['Standard', 'Express']),
     colorRule(sendInvoiceRange, 'Send Invoice', amber, 0),
     colorRule(sendInvoiceRange, 'Resend', amber, 1),
     colorRule(sendInvoiceRange, 'Sent', green, 2),
@@ -1532,6 +1613,8 @@ async function formatConfirmedOrdersTab() {
     colorRule(orderStatusRange, 'Processing', gray, 7),
     colorRule(orderStatusRange, 'In Transit', blue, 8),
     colorRule(orderStatusRange, 'Delivered', cyan, 9),
+    colorRule(orderStatusRange, 'Rejected', red, 10),
+    colorRule(shippingMethodRange, 'Express', purple, 11),
   ];
 
   await sheetsClient.spreadsheets.batchUpdate(
@@ -1546,7 +1629,16 @@ async function formatConfirmedOrdersTab() {
 // Print Invoice (columns G:H) are deliberately not written here, since that
 // happens afterward and must never block or risk this row itself (see
 // invoiceService.js).
-async function appendConfirmedOrder({ customerName, phone, address, products, totalPrice }) {
+//
+// shippingMethod (2026-08-19, optional): 'express' | 'standard' | undefined.
+// Written as a separate, best-effort update right after the core append
+// succeeds (same "don't let a secondary write risk the row that matters"
+// reasoning as Invoice Link/Print Invoice above) rather than folded into the
+// A:F append itself, so a failure here can never affect the order row being
+// created at all — it would just leave the Shipping Method cell blank
+// (read as 'Standard' everywhere it's consumed, the safe default) rather
+// than losing or corrupting the order.
+async function appendConfirmedOrder({ customerName, phone, address, products, totalPrice, shippingMethod }) {
   if (!enabled) return null;
 
   // Explicit idempotency check — see ORDER_DEDUP_WINDOW_MS above. No
@@ -1597,6 +1689,30 @@ async function appendConfirmedOrder({ customerName, phone, address, products, to
     )
   );
   const rowNumber = extractRowNumber(result.data.updates && result.data.updates.updatedRange);
+
+  if (rowNumber) {
+    const shippingMethodColIndex = CONFIRMED_ORDERS_HEADERS.indexOf('Shipping Method');
+    const shippingMethodCol = columnLetter(shippingMethodColIndex + 1);
+    try {
+      await sheetsCall(() =>
+        sheetsClient.spreadsheets.values.update(
+          {
+            spreadsheetId: config.googleSheetId,
+            range: `${CONFIRMED_ORDERS_SHEET_NAME}!${shippingMethodCol}${rowNumber}`,
+            valueInputOption: 'RAW',
+            requestBody: { values: [[shippingMethod === 'express' ? 'Express' : 'Standard']] },
+          },
+          { timeout: REQUEST_TIMEOUT_MS }
+        )
+      );
+    } catch (err) {
+      logger.error(
+        `Failed to write Shipping Method for Confirmed_Orders row ${rowNumber} — the order itself was still logged normally, but the cell may read blank (treated as Standard everywhere it's consumed).`,
+        err
+      );
+    }
+  }
+
   return { rowNumber };
 }
 
@@ -1679,7 +1795,12 @@ async function getConfirmedOrdersPipelineRows() {
     sheetsClient.spreadsheets.values.get(
       {
         spreadsheetId: config.googleSheetId,
-        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A2:K`,
+        // 2026-08-19: widened from A2:K to A2:M to also pick up Shipping Fee
+        // Override (L, pre-existing — was never read here before, only by
+        // getConfirmedOrderByRow for the invoice page) and the new Shipping
+        // Method (M) — orderPipeline.js's Trusted_Clients loyalty fee calc
+        // needs the latter to charge the real express fee.
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A2:M`,
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
@@ -1687,7 +1808,21 @@ async function getConfirmedOrdersPipelineRows() {
   const rows = result.data.values || [];
   return rows
     .map((row, i) => {
-      const [date, customerName, phone, address, products, totalPrice, invoiceLink, , sendInvoiceAction, confirmationStatus, orderStatus] = row;
+      const [
+        date,
+        customerName,
+        phone,
+        address,
+        products,
+        totalPrice,
+        invoiceLink,
+        ,
+        sendInvoiceAction,
+        confirmationStatus,
+        orderStatus,
+        shippingFeeOverride,
+        shippingMethod,
+      ] = row;
       return {
         rowNumber: i + 2,
         date,
@@ -1700,6 +1835,11 @@ async function getConfirmedOrdersPipelineRows() {
         sendInvoiceAction: (sendInvoiceAction || '').trim(),
         confirmationStatus: (confirmationStatus || '').trim(),
         orderStatus: (orderStatus || '').trim(),
+        shippingFeeOverride: (shippingFeeOverride || '').trim(),
+        // Blank (pre-existing rows created before this column existed, or a
+        // write that failed and got logged) reads as 'Standard' — the same
+        // safe default used everywhere else this value is consumed.
+        shippingMethod: (shippingMethod || '').trim().toLowerCase() === 'express' ? 'express' : 'standard',
       };
     })
     .filter((row) => row.phone);
@@ -1748,6 +1888,91 @@ async function setConfirmationStatus(rowNumber, status) {
         range: `${CONFIRMED_ORDERS_SHEET_NAME}!J${rowNumber}`,
         valueInputOption: 'RAW',
         requestBody: { values: [[status]] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Writes Order Status (column K) — previously staff-only (Processing/In
+// Transit/Delivered, set manually in the Sheet), now also written
+// automatically by orderPipeline.js's runRejectedStatusSyncCheck the moment
+// Confirmation Status reads 'Rejected', so a rejected order's fulfillment
+// status can't be left showing 'Processing' as if it were still headed out.
+async function setOrderStatus(rowNumber, status) {
+  if (!enabled || !rowNumber) return;
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!K${rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[status]] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Writes column L ('Shipping Fee Override') — a staff/admin exception rate
+// (e.g. a one-off free-shipping goodwill gesture) that overrides
+// shippingZones.matchShippingZone(address)'s computed fee for this specific
+// order only. feeEGP of 0 is a real, valid override (free shipping) and must
+// be written as such — never confused with "no override" (a blank cell,
+// see getConfirmedOrderByRow).
+async function setShippingFeeOverride(rowNumber, feeEGP) {
+  if (!enabled || !rowNumber) return;
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!L${rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[feeEGP]] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Writes column F ('Total Price') — this column has only ever stored the
+// PRODUCTS total (see invoiceGenerator.js's productTotal param); the
+// shipping fee is always computed separately at invoice-render time
+// (shippingZones.matchShippingZone, or the 'Shipping Fee Override'
+// exception above) and added on top, never baked into this cell. Exists so
+// a staff/admin correction to the products total can be made explicitly
+// rather than only ever written once at order-creation time.
+async function setTotalPrice(rowNumber, totalPrice) {
+  if (!enabled || !rowNumber) return;
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!F${rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[totalPrice]] },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    )
+  );
+}
+
+// Writes Products (E) + Total Price (F) together in one call — used by
+// campaignWorker.js's handleOrderConfirmed when a customer adds/changes an
+// item while their order is still an open draft (Confirmation Status Hold
+// or Pending, not yet Confirmed), so the SAME row gets the merged item list
+// and recalculated total instead of a second row being appended. One write
+// covers both cells atomically so a mid-write failure can never leave
+// Products and Total Price disagreeing about what's actually in the order.
+async function updateConfirmedOrderItems(rowNumber, { products, totalPrice }) {
+  if (!enabled || !rowNumber) return;
+  await sheetsCall(() =>
+    sheetsClient.spreadsheets.values.update(
+      {
+        spreadsheetId: config.googleSheetId,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!E${rowNumber}:F${rowNumber}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[products, totalPrice]] },
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
@@ -1830,14 +2055,25 @@ async function getConfirmedOrderByRow(rowNumber) {
     sheetsClient.spreadsheets.values.get(
       {
         spreadsheetId: config.googleSheetId,
-        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A${rowNumber}:F${rowNumber}`,
+        range: `${CONFIRMED_ORDERS_SHEET_NAME}!A${rowNumber}:M${rowNumber}`,
       },
       { timeout: REQUEST_TIMEOUT_MS }
     )
   );
-  const [date, customerName, phone, address, products, totalPrice] = (result.data.values && result.data.values[0]) || [];
+  const row = (result.data.values && result.data.values[0]) || [];
+  const [date, customerName, phone, address, products, totalPrice] = row;
   if (!date) return null;
-  return { date, customerName, phone, address, products, totalPrice };
+  // Column L (index 11) — see 'Shipping Fee Override' header comment above.
+  // Blank/unparseable means "no exception", not "0 EGP" — parsePriceToNumber
+  // (invoiceGenerator.js) is what turns a real 0 into an actual free-shipping
+  // exception, so this must stay null/undefined rather than coerce to 0.
+  const overrideRaw = row[11];
+  const shippingFeeOverrideEGP = overrideRaw === undefined || overrideRaw === null || String(overrideRaw).trim() === '' ? null : overrideRaw;
+  // Column M (index 12) — see 'Shipping Method' header comment above. Blank
+  // (pre-existing rows, or a write that failed) reads as 'standard', the
+  // same safe default used everywhere else this value is consumed.
+  const shippingMethod = String(row[12] || '').trim().toLowerCase() === 'express' ? 'express' : 'standard';
+  return { date, customerName, phone, address, products, totalPrice, shippingFeeOverrideEGP, shippingMethod };
 }
 
 // phone number lives in column C (index 2) of the Leads sheet; earliest row
@@ -2410,6 +2646,10 @@ module.exports = {
   getConfirmedOrdersPipelineRows,
   markInvoiceSent,
   setConfirmationStatus,
+  setOrderStatus,
+  setShippingFeeOverride,
+  setTotalPrice,
+  updateConfirmedOrderItems,
   appendFeedback,
   formatOffersCampaignTable,
   formatTargetedClientsTab,

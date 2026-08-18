@@ -98,10 +98,19 @@ const SHIPPING_ZONES = [
   // (helwan, shubra_marg, tagamoa) is checked first, so a Nasr City/Maadi/
   // Dokki-style address correctly falls through to here rather than one of
   // those more specific (and differently priced) tiers.
+  //
+  // 2026-08-19 (store owner directive): Same-Day Express is a flat, fixed
+  // alternative to this zone's standard 65 EGP fee — NOT an extra add-on
+  // charged on top of it — available only in this one zone. expressFeeEGP is only
+  // ever set on this zone object; every downstream reader (buildShippingZoneSection
+  // below, and matchShippingZone's return value) treats its absence/null as
+  // "no express option here," so Cairo/Giza doesn't need a parallel
+  // allow-list to stay in sync with.
   {
     id: 'cairo_giza',
     name: 'القاهرة والجيزة',
     feeEGP: 65,
+    expressFeeEGP: 100,
     keywords: [
       'القاهرة',
       'قاهرة',
@@ -152,7 +161,7 @@ function matchShippingZone(addressText) {
   if (!addressText) return null;
   for (const zone of SHIPPING_ZONES) {
     if (containsWordSequence(addressText, zone.keywords)) {
-      return { id: zone.id, name: zone.name, feeEGP: zone.feeEGP };
+      return { id: zone.id, name: zone.name, feeEGP: zone.feeEGP, expressFeeEGP: zone.expressFeeEGP || null };
     }
   }
   return null;

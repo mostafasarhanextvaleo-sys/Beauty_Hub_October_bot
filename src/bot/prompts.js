@@ -157,7 +157,7 @@ function getMediaCaptionPrefix(messageType) {
   return ack ? `${ack}\n` : '';
 }
 
-// shippingZone (optional, 2026-08-09): { name, feeEGP } from
+// shippingZone (optional, 2026-08-09): { name, feeEGP, expressFeeEGP } from
 // shippingZones.js's matchShippingZone(deliveryAddress) — deterministic, real
 // data, never text the model wrote. Omitted entirely (not shown as "غير
 // محدد") when null, since a customer whose area doesn't map to a known zone
@@ -165,9 +165,16 @@ function getMediaCaptionPrefix(messageType) {
 // line that looks like an oversight. Optional/backward compatible: agent.js's
 // two existing call sites (the rules-engine path) don't pass this and are
 // completely unaffected.
-function orderConfirmationSummary({ productName, customerName, deliveryAddress, shippingZone }) {
+// shippingMethod (optional, 2026-08-19): 'express' | 'standard' | undefined —
+// already re-verified against shippingZone's own expressFeeEGP by the caller
+// (llmAgent.js's resolveShippingMethod), so this only ever picks WHICH real
+// number to show, never decides eligibility itself. Same backward-compat
+// story as shippingZone — agent.js's call sites omit it and get the
+// pre-existing standard-fee-only behavior.
+function orderConfirmationSummary({ productName, customerName, deliveryAddress, shippingZone, shippingMethod }) {
+  const isExpress = shippingMethod === 'express' && shippingZone && shippingZone.expressFeeEGP;
   const shippingLine = shippingZone
-    ? `الشحن: ${shippingZone.feeEGP} جنيه (${shippingZone.name})\n`
+    ? `الشحن: ${isExpress ? shippingZone.expressFeeEGP : shippingZone.feeEGP} جنيه (${shippingZone.name}${isExpress ? ' — Same-Day Express' : ''})\n`
     : '';
   return (
     'تمام 🌸 خليني أتأكد من البيانات:\n' +

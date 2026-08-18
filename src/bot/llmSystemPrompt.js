@@ -2,6 +2,8 @@ const { BUNDLE_DISCOUNT_PERCENT } = require('./routineBundles');
 const corrections = require('./corrections');
 const { SHIPPING_ZONES, matchShippingZone } = require('./shippingZones');
 const config = require('../config');
+const { normalizeArabic } = require('../utils/helpers');
+const productMatcher = require('./productMatcher');
 
 const STORE_NAME = 'Beauty Hub October';
 // Store owner-provided catalog site (2026-07-30) — a SpreadSimple storefront
@@ -84,6 +86,7 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
 3-ب. اقفلي كل توصية بسؤال (2026-08-06): بعد ما تفهمي احتياج العميلة وترشحيلها منتج بسبب واضح زي قاعدة 3، لازم ردك يتضمن سؤال مباشر يقفل الخطوة دي — زي "تحبي أحجزهولك؟" أو "حابة تاخديها دلوقتي؟". ممنوع تسيبي رد ترشيح من غير أي سؤال يوجه العميلة للخطوة الجاية. مرة واحدة بس لكل رد، من غير إلحاح أو تكرار السؤال في نفس الرسالة — ده سؤال ختامي طبيعي بعد النصيحة (قاعدة 3)، مش ضغط أو تحويل لبياعة. لو ردت باهتمام أو سؤال تفصيلي عن المنتج بدل ما تجاوبك بنعم أو لا، جاوبيها الأول وبعدين اسأليها سؤال القفل تاني بنفس اللطف.
 4. اقتراح الروتين: لو في أكتر من منتج مناسب في قائمة المنتجات المتاحة تحت (زي غسول ومرطب مع بعض)، اقترحي عليها تاخد الاتنين كـ"روتين" بدل ما تكتفي بواحد بس — لكن ممنوع نهائياً تخترعي منتج تاني مش موجود في القائمة عشان تكمّلي الروتين.
 5. البحث المباشر عن منتج: لو العميل سأل عن براند أو منتج معين بالاسم، دوري فوراً في قائمة المنتجات المتاحة تحت، قوليله السعر (لو موجود) مع رأيك فيه بسرعة، واسأليه لو حابب يحجزه. من غير ما تجبريه يمر على خطوات الاستشارة في قاعدة 2.
+5-ب. لما يكون فيه أكتر من نسخة قريبة من نفس المنتج (هتلاقيها متجمعة تحت عنوان "مجموعة متغيرات لنفس المنتج" في قائمة المنتجات المتاحة تحت — نفس المنتج بس بريحة أو حجم أو كود مختلف): لو العميلة ما حددتش أنهي نسخة بالظبط في رسالتها (لا بالاسم، ولا بالريحة، ولا بالكود)، ممنوع تختاري نسخة بنفسك أو تحطي أي id من المجموعة دي في mentioned_product_ids أو تسعّري منتج معين منها — بدل من كده اسأليها سؤال قصير يحددها (زي "تحبي ريحة الرمان ولا الأبيض؟") وسيبي mentioned_product_ids فاضية من نسخ المجموعة دي لحد ما تردّ. لو حددت (بالاسم أو الريحة أو الرقم)، أو لو كل نسخ المجموعة نفس السعر بالظبط فمفيش داعي تحددي، كمّلي عادي وحطي id النسخة الصح بس.
 6. التعامل مع الرفض بلطف: لو العميل رفض توصية ("لا"، "مش عاوزه")، متقفليش المحادثة. اسأليه عايز إيه غير كده أو اعرضي عليه فئة تانية بأسلوب ناصح مش مُلحّ.
 6-ب. التعامل مع تردد السعر (2026-08-06: أكبر سبب معروف لتوقف العميلات عن الرد، لسه من غير رد فعلي مخصوص ليه): لو العميلة قالت إن السعر غالي عليها، أو "خليني أفكر"، أو سألت فيه خصم:
     أ) لو في عرض نشط فعلاً بيغطي نفس المنتج أو الفئة دي (شوفي قسم العروض النشطة تحت لو موجود)، قوليلها عنه بوضوح وثقة فورًا — ده أصدق وأقوى رد ممكن.
@@ -123,10 +126,11 @@ const SARA_PERSONA = `أنتِ "سارة"، المساعد الذكي (AI) ال�
 // price_quoted, and validateModelOutput in llmAgent.js discards the whole
 // reply because it doesn't match any candidate product's price.
 const SHIPPING_POLICY = `سياسات الشحن والتوصيل — دي حقايق ثابتة عن المتجر، التزمي بيها بالنص ومتخترعيش أيام أو أسعار أو مناطق تانية غيرها:
-- أيام الشحن: الشحن بيتم بس يومي الجمعة والسبت.
+- مدة التوصيل العادي: التوصيل بيتم خلال 3-4 أيام عمل من تأكيد الأوردر والفاتورة.
+- الشحن السريع (Same-Day Express): متاح بس لعميلات القاهرة والجيزة — التوصيل بيتم في نفس يوم تأكيد الأوردر (لو اتأكد بدري في اليوم)، بسعر ثابت 100 جنيه بدل سعر الشحن العادي بتاع المنطقة دي (مش سعر إضافي فوق العادي). لو عميلة من القاهرة أو الجيزة سألت عن التوصيل، اذكريلها الخيارين (العادي 3-4 أيام بالسعر العادي، والسريع نفس اليوم بـ100 جنيه) واسأليها تحب تختار إيه. ممنوع تعرضي الخيار السريع ده على أي منطقة تانية غير القاهرة والجيزة.
 - نطاق التغطية: التوصيل متاح دلوقتي لكل محافظات مصر — ممنوع نهائياً تعتذري عن أي منطقة أو تقوليلها إن التوصيل مش متاح عندها، مهما كانت المنطقة بعيدة.
 - تكلفة الشحن بتختلف حسب المحافظة/المنطقة (جدول مرجعي بس، ملهوش علاقة برد فعلي لعميلة معينة):
-${SHIPPING_ZONES.map((z) => `  - ${z.name}: ${z.feeEGP} جنيه`).join('\n')}
+${SHIPPING_ZONES.map((z) => `  - ${z.name}: ${z.feeEGP} جنيه${z.expressFeeEGP ? ` (أو ${z.expressFeeEGP} جنيه للشحن السريع Same-Day Express)` : ''}`).join('\n')}
 ملحوظة حرجة جداً: ممنوع نهائياً تحسبي أو تخمّني تكلفة الشحن الفعلية لعميلة بنفسك من الجدول فوق، حتى لو حسّيتي واثقة من المنطقة. لو عنوان العميلة معروف، هتلاقي التكلفة الدقيقة والمحسوبة جاهزة ليكي في قسم منفصل تحت (لو موجود) — استخدمي الرقم ده بالظبط وبس. لو مفيش قسم زي ده لسه (يعني العنوان لسه مش معروف أو مش واضح بالظبط)، قوليلها إن التكلفة بتتحدد حسب منطقتها وهتتأكد بالظبط بعد ما تدّيكي عنوانها بالتفصيل — وممنوع تقوليلها رقم من عندك.
 ملحوظة تانية: لو ذكرتي أي رقم لمصاريف الشحن في ردك، متحطيهوش في حقل price_quoted ولا routine_bundle_price_quoted — الحقلين دول لسعر المنتج بس، مش لمصاريف الشحن.`;
 
@@ -291,7 +295,7 @@ ${lines}${feedbackNote}`;
 }
 
 // 2026-08-09 — the grounded, deterministic counterpart to SHIPPING_POLICY's
-// reference table above. shippingZone: { name, feeEGP } from
+// reference table above. shippingZone: { name, feeEGP, expressFeeEGP } from
 // shippingZones.js's matchShippingZone(session.orderData.deliveryAddress),
 // computed in llmAgent.js — null when no address is known yet, OR when an
 // address IS known but didn't confidently match any zone (never guessed;
@@ -300,11 +304,20 @@ ${lines}${feedbackNote}`;
 // cases so the model gets the right instruction either way: ask for the
 // address at all, vs. tell this specific customer the team will confirm her
 // specific area's fee.
+//
+// 2026-08-19 — expressFeeEGP is only ever set on the cairo_giza zone (see
+// shippingZones.js), so this only ever mentions Same-Day Express when the
+// customer's own real, matched zone actually has it — never guessed or
+// offered to a different region just because SHIPPING_POLICY's reference
+// table above mentions it exists somewhere.
 function buildShippingZoneSection(shippingZone, addressKnown) {
   if (shippingZone) {
+    const expressLine = shippingZone.expressFeeEGP
+      ? ` عندها كمان اختيار الشحن السريع (Same-Day Express، توصيل نفس اليوم) بسعر ثابت ${shippingZone.expressFeeEGP} جنيه بدل الـ${shippingZone.feeEGP} جنيه العاديين — اذكريه لو سألت عن التوصيل أو لو حابة توصل أسرع.`
+      : '';
     return `
 
-بيانات شحن محسوبة فعلياً لعنوان العميلة الحالي (استخدمي الرقم ده بالظبط لو ذكرتي تكلفة الشحن، ومتحسبيش رقم تاني): منطقة "${shippingZone.name}"، تكلفة الشحن ${shippingZone.feeEGP} جنيه.`;
+بيانات شحن محسوبة فعلياً لعنوان العميلة الحالي (استخدمي الرقم ده بالظبط لو ذكرتي تكلفة الشحن، ومتحسبيش رقم تاني): منطقة "${shippingZone.name}"، تكلفة الشحن ${shippingZone.feeEGP} جنيه (توصيل عادي خلال 3-4 أيام عمل).${expressLine}`;
   }
   if (addressKnown) {
     return `
@@ -314,13 +327,158 @@ function buildShippingZoneSection(shippingZone, addressKnown) {
   return '';
 }
 
+// 2026-08-18 addition — confirmed live (chatId 88876412584107@lid, phone
+// 201055990502): the catalog carries multiple near-duplicate rows for what a
+// customer experiences as ONE product — same product line, different scent/
+// size, or a legacy numeric id alongside its current C-prefixed replacement
+// (e.g. 6 separate "مسك طهارة" rows). Presented as a flat, unlabeled list,
+// that ambiguity is exactly what got two different AI providers (OpenAI and
+// Gemini) to write the shared product NAME into mentioned_product_ids
+// instead of picking one specific id — every reply got discarded, and a
+// customer asking for that exact product got the generic fallback 5 times
+// in a row. Deliberately NOT deduping/merging the catalog itself (store
+// owner directive — every row is intentional, real inventory); this only
+// changes how visually-similar candidates are grouped when shown to the
+// model, as a nudge toward asking which variant instead of guessing one.
+// Token noise (bare numbers, "Cxxx" SKU codes, unit words, the "–"
+// separator) is stripped before comparing names, since two variants differ
+// mainly in exactly that kind of suffix, not in their actual product words.
+const VARIANT_GROUP_NOISE_WORDS = new Set(['جم', 'جرام', 'جرامات', 'مل', 'مللي', 'مليلتر', 'ml', 'gm', 'g'].map(normalizeArabic));
+const VARIANT_GROUP_OVERLAP_THRESHOLD = 0.6;
+
+// Same technique as llmAgent.js's stripDefiniteArticle (kept as a local
+// copy rather than imported — llmAgent.js already requires this file, so
+// importing back would be circular). Also strips the combined "بال"
+// (by/with-the) prefix: tested against the real catalog and, without this,
+// "مسك طهاره بالرمان – C048" and "مسك الطهاره رمان – C048" — the SAME SKU,
+// just reordered — shared zero tokens ("بالرمان" vs "رمان", "الطهاره" vs
+// "طهاره") and landed in separate groups.
+function stripLeadingArticle(token) {
+  if (token.length >= 5 && token.startsWith('بال')) return token.slice(3);
+  if (token.length >= 4 && token.startsWith('ال')) return token.slice(2);
+  return token;
+}
+
+function variantGroupTokens(name) {
+  return normalizeArabic(name)
+    .split(' ')
+    .filter((t) => t.length >= 2)
+    .filter((t) => !/^c?\d+$/i.test(t))
+    .filter((t) => t !== '–' && t !== '-')
+    .filter((t) => !VARIANT_GROUP_NOISE_WORDS.has(t))
+    .map(stripLeadingArticle)
+    .filter((t) => t.length >= 2);
+}
+
+// A token shared by many DIFFERENT products catalog-wide (a category term
+// like "بادي"/"سبلاش" — "body splash" — or a generic form-word) is a weak
+// signal that two candidates are variants of the SAME item; only a token
+// that's actually rare across the whole catalog reliably means that. Same
+// technique, threshold, and reasoning as llmAgent.js's isDistinctiveToken/
+// MAX_PRODUCTS_FOR_DISTINCTIVE_TOKEN (kept as a local copy for the same
+// circular-require reason as stripLeadingArticle above). Caught live in
+// testing before this shipped: without this filter, 19 completely different
+// body-splash products from 6 different brands (يارا/بلوب/إيفا/سولا/جوسيل)
+// got grouped into one "pick a variant" block just because every one of
+// their names contains "بادي سبلاش" — exactly the kind of over-grouping a
+// customer browsing that category should never see. Computed fresh per call
+// against productMatcher's live catalog (refreshed every 5 min same as
+// everywhere else) rather than cached, since a stale distinctiveness map
+// could quietly drift from the live catalog otherwise — cheap enough at
+// this catalog size (~800 items) to not need caching, same "plain scan is
+// sufficient" reasoning productSearch.js's keyword fallback already relies on.
+const MAX_PRODUCTS_FOR_DISTINCTIVE_VARIANT_TOKEN = 10;
+
+function buildVariantTokenDocFrequency() {
+  const freq = new Map();
+  productMatcher.getAllProducts().forEach((p) => {
+    new Set(variantGroupTokens(p.name)).forEach((t) => freq.set(t, (freq.get(t) || 0) + 1));
+  });
+  return freq;
+}
+
+// A brand name alone ("دير"/"أملا") is often the ONLY distinctive token left
+// once generic words are filtered out above — but a shared brand does not
+// mean two products are the same item in a different scent/size; it can
+// just as easily mean two genuinely different products from that brand
+// (a cleanser and a cream, a hair oil and a kids' detangling spray). Caught
+// live in testing: "غسول دير للوجه" (a cleanser) and "دير كريم تفتيح" (a
+// brightening cream) share only "دير" and were wrongly grouped as
+// "variants" before this check existed. Hand-curated rather than
+// frequency-derived, same reasoning as PRODUCT_TOKEN_ALIASES-style lists
+// elsewhere in this codebase — this is a closed, slow-changing vocabulary
+// (cosmetic product forms), not something worth deriving statistically.
+// Deliberately checked against the FULL raw token list (before the
+// distinctiveness filter below strips these exact words for being common)
+// — their commonness is irrelevant here; what matters is whether the two
+// names each *declare* a form and those forms disagree.
+const PRODUCT_FORM_WORDS = new Set(
+  [
+    'غسول', 'كريم', 'جل', 'سيروم', 'شامبو', 'بلسم', 'زيت', 'سبراي', 'ماسك', 'لوشن', 'سكراب',
+    'بودرة', 'بودر', 'فوم', 'تونر', 'مقشر', 'مرهم', 'منظف', 'كولونيا', 'عطر', 'مزيل', 'واقي',
+    'روج', 'كونسيلر', 'اساس', 'ماسكارا', 'ايلاينر',
+  ].map(normalizeArabic)
+);
+
+function formsConflict(rawTokensA, rawTokensB) {
+  const formsA = rawTokensA.filter((t) => PRODUCT_FORM_WORDS.has(t));
+  const formsB = rawTokensB.filter((t) => PRODUCT_FORM_WORDS.has(t));
+  if (formsA.length === 0 || formsB.length === 0) return false;
+  return !formsA.some((f) => formsB.includes(f));
+}
+
+// Greedy single-pass clustering (candidate lists are small — capped at 15 by
+// productSearch.js — so O(n^2) is trivial here): a product joins the first
+// group whose "founder" it overlaps >= VARIANT_GROUP_OVERLAP_THRESHOLD with,
+// measured against the SMALLER name's token count so a short scent-only
+// difference doesn't get diluted by an otherwise-long name — UNLESS the two
+// names declare conflicting product forms (formsConflict above), which
+// blocks grouping regardless of how high the overlap is. Only distinctive
+// tokens (see buildVariantTokenDocFrequency above) count toward the overlap
+// ratio itself.
+function groupCandidatesByVariant(products) {
+  const tokenDocFrequency = buildVariantTokenDocFrequency();
+  const rawTokenLists = products.map((p) => variantGroupTokens(p.name));
+  const distinctiveTokenSets = rawTokenLists.map(
+    (tokens) => new Set(tokens.filter((t) => (tokenDocFrequency.get(t) || 0) <= MAX_PRODUCTS_FOR_DISTINCTIVE_VARIANT_TOKEN))
+  );
+  const assigned = new Array(products.length).fill(false);
+  const groups = [];
+
+  for (let i = 0; i < products.length; i += 1) {
+    if (assigned[i]) continue;
+    const group = [products[i]];
+    assigned[i] = true;
+    for (let j = i + 1; j < products.length; j += 1) {
+      if (assigned[j]) continue;
+      if (formsConflict(rawTokenLists[i], rawTokenLists[j])) continue;
+      const a = distinctiveTokenSets[i];
+      const b = distinctiveTokenSets[j];
+      if (a.size === 0 || b.size === 0) continue;
+      const shared = [...a].filter((t) => b.has(t)).length;
+      if (shared / Math.min(a.size, b.size) >= VARIANT_GROUP_OVERLAP_THRESHOLD) {
+        group.push(products[j]);
+        assigned[j] = true;
+      }
+    }
+    groups.push(group);
+  }
+  return groups;
+}
+
 function serializeCandidates(products) {
   if (!products || products.length === 0) {
     return 'لا توجد منتجات مطابقة لرسالة العميل حالياً في الكتالوج.';
   }
-  return products
-    .map((p) => `- id:${p.id} | ${p.name} | فئة:${p.category} | السعر:${formatPrice(p)} | ${p.description || ''}`.trim())
-    .join('\n');
+  return groupCandidatesByVariant(products)
+    .map((group) => {
+      const lines = group
+        .map((p) => `- id:${p.id} | ${p.name} | فئة:${p.category} | السعر:${formatPrice(p)} | ${p.description || ''}`.trim())
+        .join('\n');
+      if (group.length === 1) return lines;
+      return `مجموعة متغيرات لنفس المنتج (فرق بس في الريحة/الحجم/الكود) — لو العميلة ما حددتش أنهي نسخة بالظبط، اسأليها تحدد الأول (طبّقي قاعدة 5-ب):\n${lines}`;
+    })
+    .join('\n\n');
 }
 
 // bundleComplement (optional): the routine-bundle product to offer alongside
@@ -444,7 +602,8 @@ const RESPONSE_SCHEMA = {
     mentioned_product_ids: {
       type: 'array',
       items: { type: 'string' },
-      description: 'IDs (from the candidate list above) of products actually referenced in reply_text. Empty array if none.',
+      description:
+        'The exact `id:` value(s) copied from the candidate list above (e.g. "C048") of products actually referenced in reply_text — NEVER the product\'s name or any other text, even if the name is what you wrote in reply_text. Wrong example: writing "مسك الطهارة" here. Right example: writing "C048" here. If a group of near-duplicate variants was shown together ("مجموعة متغيرات لنفس المنتج") and you asked the customer to pick one instead of naming a specific product, leave this empty rather than guessing an id from that group. Empty array if no specific candidate id applies.',
     },
     price_quoted: {
       type: ['string', 'null'],
@@ -467,9 +626,24 @@ const RESPONSE_SCHEMA = {
         customer_name: { type: ['string', 'null'], description: 'Customer\'s name, if given so far. null if not yet given.' },
         delivery_address: { type: ['string', 'null'], description: 'Detailed delivery address, if given so far. null if not yet given.' },
         alt_phone: { type: ['string', 'null'], description: 'Alternative phone number, if given so far. null if not yet given.' },
+        // 2026-08-19 addition — Same-Day Express shipping. Deliberately just
+        // records the customer's stated preference; the actual eligibility
+        // check (is this address really in Cairo/Giza, does that zone really
+        // have an express option) happens in code, in
+        // applyValidatedOutput/resolveShippingMethod (llmAgent.js) — same
+        // "the model states intent, code verifies the real fact" split as
+        // every other money-related field in this schema (price_quoted,
+        // routine_bundle_price_quoted). Never trust this value alone to
+        // decide what a customer is actually charged.
+        shipping_method: {
+          type: ['string', 'null'],
+          enum: ['standard', 'express', null],
+          description:
+            'Set to "express" only if the customer explicitly asked for or agreed to Same-Day Express shipping (only ever offered to Cairo/Giza customers per the shipping policy above). Set to "standard" if she explicitly wants normal shipping, or if she previously chose express but changed her mind. null if shipping speed hasn\'t come up this turn — her existing choice (if any) carries over, defaulting to standard.',
+        },
         confirmed: { type: 'boolean', description: 'True only if the customer just explicitly confirmed the order details are correct.' },
       },
-      required: ['customer_name', 'delivery_address', 'alt_phone', 'confirmed'],
+      required: ['customer_name', 'delivery_address', 'alt_phone', 'shipping_method', 'confirmed'],
       additionalProperties: false,
     },
     human_handover: { type: 'boolean' },

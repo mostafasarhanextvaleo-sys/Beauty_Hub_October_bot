@@ -161,6 +161,8 @@ function startExpressServer() {
         address: order.address,
         products: order.products,
         productTotal: order.totalPrice,
+        shippingFeeOverrideEGP: order.shippingFeeOverrideEGP,
+        shippingMethod: order.shippingMethod,
       });
       res.set('Content-Type', 'text/html; charset=utf-8').send(html);
     } catch (err) {

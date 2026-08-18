@@ -35,7 +35,7 @@ function formatEgp(amount) {
 // printed straight from whatever browser opens it (Ctrl+P) — no PDF, no
 // storage. RTL/Arabic shaping is handled natively by that browser, same as
 // any other Arabic web page.
-function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal }) {
+function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, address, products, productTotal, shippingFeeOverrideEGP, shippingMethod }) {
   const productTotalNum = parsePriceToNumber(productTotal);
   // 2026-08-09 nationwide shipping expansion — the flat 60-EGP constant this
   // used to add is gone; the real fee now depends on the customer's actual
@@ -43,10 +43,36 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
   // codebase (shippingZones.js). An address that doesn't confidently match
   // any zone gets an honest "needs confirming" line rather than a wrong
   // number silently baked into the grand total.
-  const shippingZone = matchShippingZone(address);
-  const shippingFeeNum = shippingZone ? shippingZone.feeEGP : 0;
-  const shippingLabel = shippingZone
-    ? `${formatEgp(shippingFeeNum)} (${escapeHtml(shippingZone.name)})`
+  //
+  // 2026-08-11 — Confirmed_Orders' 'Shipping Fee Override' column (staff/
+  // admin per-order exception, e.g. a one-off free-shipping goodwill
+  // gesture) takes precedence over the computed zone fee when set. `null`
+  // (the getConfirmedOrderByRow convention for a blank cell) means "no
+  // exception" — falls through to the normal computed fee; a real 0 is a
+  // genuine free-shipping exception and must be honored as such, not
+  // treated as "unset".
+  const hasOverride = shippingFeeOverrideEGP !== null && shippingFeeOverrideEGP !== undefined && String(shippingFeeOverrideEGP).trim() !== '';
+  const shippingZone = hasOverride ? null : matchShippingZone(address);
+  // 2026-08-19 — Same-Day Express: only ever honored when there's no manual
+  // override (that still wins outright, same as before) AND the zone itself
+  // actually has an express fee — a stale/blank shippingZone (address
+  // doesn't resolve) or a zone without expressFeeEGP (anywhere outside
+  // Cairo/Giza) silently falls back to the normal computed fee rather than
+  // ever inventing a number, same "code re-verifies, never trusts the stored
+  // label alone" reasoning as llmAgent.js's resolveShippingMethod, which is
+  // what wrote this Confirmed_Orders row's Shipping Method in the first
+  // place — this is a second, independent check, not a redundant one, since
+  // a Sheet cell can always be hand-edited by staff after the fact.
+  const isExpress = !hasOverride && shippingMethod === 'express' && shippingZone && shippingZone.expressFeeEGP;
+  const shippingFeeNum = hasOverride
+    ? parsePriceToNumber(shippingFeeOverrideEGP)
+    : shippingZone
+    ? (isExpress ? shippingZone.expressFeeEGP : shippingZone.feeEGP)
+    : 0;
+  const shippingLabel = hasOverride
+    ? `${formatEgp(shippingFeeNum)} (سعر استثنائي خاص بهذا الطلب)`
+    : shippingZone
+    ? `${formatEgp(shippingFeeNum)} (${escapeHtml(shippingZone.name)}${isExpress ? ' — Same-Day Express' : ''})`
     : 'هيتم تأكيدها من الفريق';
   const grandTotal = productTotalNum + shippingFeeNum;
 
@@ -98,4 +124,4 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
 </html>`;
 }
 
-module.exports = { buildInvoiceHtml };
+module.exports = { buildInvoiceHtml, parsePriceToNumber };

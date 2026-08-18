@@ -228,6 +228,23 @@ const REPEATED_FALLBACK_LOOP_REPLY =
   'حاسة إن في لخبطة شوية في كلامنا 🌸 هبعتلك حد من فريقنا يتواصل معاكِ بسرعة عشان يساعدك صح.';
 const MAX_CONSECUTIVE_FALLBACK_DOWNGRADES = 1;
 
+// 2026-08-18 addition — confirmed live (chatId 88876412584107@lid, phone
+// 201055990502): "every configured AI tier failed or got rejected by
+// validation" (see the `if (!validated)` branch further down) used to be
+// treated as a one-off blip worth silently retrying next turn, same as any
+// other transient failure. But it isn't always transient — a customer
+// asking about one specific product got that exact branch 5 times in ~10
+// minutes because both OpenAI and Gemini kept making the identical
+// structured-output mistake for that product's candidate set, a
+// deterministic code/data interaction that retrying alone never recovers
+// from. That branch also never recorded in session.llm.history that a
+// fallback had been sent, so the model had no memory across retries that it
+// had already failed — nothing could ever self-escalate. Same threshold and
+// reasoning as MAX_CONSECUTIVE_FALLBACK_DOWNGRADES just above: the first
+// failure is still retried silently, a second consecutive one hands off to
+// a human instead of looping indefinitely.
+const MAX_CONSECUTIVE_TIER_FAILURES = 1;
+
 // Canonical in-memory shape is the OpenAI chat format directly —
 // {role: 'user'|'assistant', content: string} — since OpenAI is now the
 // primary tier. localService.js/openaiService.js consume this as-is;
@@ -382,19 +399,33 @@ async function selectCandidatesForTurn(text, { excludeIds = [], recommendedProdu
 }
 
 // Every mentioned product id must come from THIS turn's candidate list (never
-// the full catalog) — rejecting the whole reply otherwise is safer than
-// guessing what to strip out of an already-written sentence. price_quoted is
-// checked digit-for-digit against a mentioned candidate's real price rather
-// than scanning reply_text for any number, which would false-positive on
-// legitimate non-price digits (product sizes, SPF ratings, etc).
+// the full catalog). 2026-08-18 fix — confirmed live (chatId
+// 88876412584107@lid, phone 201055990502, product "مسك الطهارة"/C048): both
+// OpenAI and Gemini occasionally write a product's NAME into
+// mentioned_product_ids instead of its real id — likely triggered by
+// multi-scent/multi-SKU product lines (several candidates sharing most of
+// their name) — and previously that discarded the ENTIRE reply, on every
+// retry, for both tiers alike, since the same candidate set produces the
+// same mistake. A customer asking about exactly this product got the
+// generic category-menu fallback 5 times in a row and never completed her
+// order. Now this only drops the bad id and keeps reply_text — the
+// "mentioned id must also be named in reply_text" filter directly below
+// already excludes any id that was never a real candidate (candidates.find()
+// can't resolve it), so no separate filtering step is needed here.
+// price_quoted is still checked digit-for-digit against a mentioned
+// candidate's real price rather than scanning reply_text for any number,
+// which would false-positive on legitimate non-price digits (product sizes,
+// SPF ratings, etc).
 function validateModelOutput(output, candidates, bundleComplement = null) {
   if (!output || typeof output.reply_text !== 'string' || !output.reply_text.trim()) return null;
 
   const candidateIds = new Set(candidates.map((p) => p.id));
   const rawMentionedIds = Array.isArray(output.mentioned_product_ids) ? output.mentioned_product_ids : [];
-  if (!rawMentionedIds.every((id) => candidateIds.has(id))) {
-    logger.warn(`LLM agent referenced product id(s) outside this turn's candidate list: ${rawMentionedIds.join(', ')}`);
-    return null;
+  const idsOutsideCandidates = rawMentionedIds.filter((id) => !candidateIds.has(id));
+  if (idsOutsideCandidates.length > 0) {
+    logger.warn(
+      `LLM agent referenced product id(s) outside this turn's candidate list: ${idsOutsideCandidates.join(', ')} — dropping the bad reference(s), keeping the rest of the reply.`
+    );
   }
 
   // Observed in production: the model sometimes tags a candidate as
@@ -512,14 +543,46 @@ function pickPrimaryMentionedProduct(mentionedIds, candidates, replyText) {
   return tiedForBest ? mentionedProducts[0] : best.product;
 }
 
+// 2026-08-19 addition — Same-Day Express shipping. The model only ever
+// states an intent (see shipping_method's schema description); this is what
+// actually decides whether that intent is honored, the same "code verifies,
+// model never gets the final say on a money-affecting fact" pattern already
+// used for price_quoted/recommendedProductNowOutOfStock elsewhere in this
+// file. 'express' is only ever accepted when the CURRENT resolved
+// deliveryAddress genuinely matches a zone that has an expressFeeEGP (today,
+// only cairo_giza) — never trusted just because the model claimed it, since
+// a stale claim from an earlier turn (address changed since) or an outright
+// model mistake would otherwise let a non-Cairo/Giza customer's order get
+// tagged 'express' with nothing downstream (invoiceGenerator.js/
+// orderPipeline.js) able to charge her the real 65/85/etc EGP zone fee
+// instead. Falls back to 'standard' — never null — so every order has an
+// unambiguous method by the time it's confirmed.
+function resolveShippingMethod(requestedMethod, prevMethod, deliveryAddress) {
+  const requested = requestedMethod === 'express' || requestedMethod === 'standard' ? requestedMethod : null;
+  const carriedOver = prevMethod === 'express' ? 'express' : 'standard';
+  const candidate = requested || carriedOver;
+  if (candidate !== 'express') return 'standard';
+
+  const zone = matchShippingZone(deliveryAddress);
+  if (zone && zone.expressFeeEGP) return 'express';
+  if (requested === 'express') {
+    logger.warn(
+      `LLM agent set shipping_method="express" for an address that doesn't resolve to an express-eligible zone ("${deliveryAddress}") — downgrading to standard.`
+    );
+  }
+  return 'standard';
+}
+
 // Code, never the model, decides order completion and human handover — both
 // are re-derived here from validated fields rather than trusted as asserted.
 function applyValidatedOutput(session, output, candidates, text) {
   const prevOrder = session.orderData || {};
+  const deliveryAddress = output.order_data.delivery_address || prevOrder.deliveryAddress || null;
   const orderData = {
     customerName: output.order_data.customer_name || prevOrder.customerName || null,
-    deliveryAddress: output.order_data.delivery_address || prevOrder.deliveryAddress || null,
+    deliveryAddress,
     altPhone: output.order_data.alt_phone || prevOrder.altPhone || null,
+    shippingMethod: resolveShippingMethod(output.order_data.shipping_method, prevOrder.shippingMethod, deliveryAddress),
   };
 
   const fieldsBefore = [prevOrder.customerName, prevOrder.deliveryAddress, prevOrder.altPhone].filter(Boolean).length;
@@ -776,9 +839,17 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
     // fulfillment step needs SOME answer to this. 2026-08-09 policy change:
     // the free-shipping-promise override that used to sit here was removed
     // store-wide — every order always shows the real computed zone fee now.
+    //
+    // 2026-08-19 — Same-Day Express addition: applied.orderData.shippingMethod
+    // is already re-verified against the real zone (resolveShippingMethod
+    // above), so 'express' here is trustworthy — never independently
+    // re-checked against expressFeeEGP a second time, that would just repeat
+    // the same guard for no reason.
     const orderShippingZone = matchShippingZone(applied.orderData.deliveryAddress);
+    const isExpress = applied.orderData.shippingMethod === 'express';
+    const shippingFeeEGP = orderShippingZone ? (isExpress ? orderShippingZone.expressFeeEGP : orderShippingZone.feeEGP) : null;
     const shippingLine = orderShippingZone
-      ? `الشحن: ${orderShippingZone.feeEGP} جنيه (${orderShippingZone.name})\n`
+      ? `الشحن: ${shippingFeeEGP} جنيه (${orderShippingZone.name}${isExpress ? ' — Same-Day Express' : ''})\n`
       : `الشحن: محتاج تأكيد يدوي (العنوان مطابقش منطقة معروفة)\n`;
     const adminNotification =
       `✅ طلب جديد مكتمل! (وكيل ذكي)\n` +
@@ -808,6 +879,12 @@ function buildLogEntryAndNotification(session, phone, text, output, applied) {
         productName: applied.recommendedProduct ? applied.recommendedProduct.name : baseFields.productName,
         customerName: applied.orderData.customerName || baseFields.customerName,
         deliveryAddress: applied.orderData.deliveryAddress || baseFields.deliveryAddress,
+        // 2026-08-19 addition — threaded through to campaignWorker.js's
+        // handleOrderConfirmed -> googleSheets.appendConfirmedOrder, which is
+        // the only place this actually needs to land (the new "Shipping
+        // Method" Confirmed_Orders column). Always 'standard' or 'express',
+        // never null — resolveShippingMethod above guarantees that.
+        shippingMethod: applied.orderData.shippingMethod,
         orderStatus: 'Completed',
         notes: `تم تأكيد الطلب عبر الوكيل الذكي (محلي/OpenAI/Gemini)${recoveryNote}`,
       },
@@ -1586,6 +1663,26 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
         orderConfirmationRequestedAt: null,
         pendingConfirmedOrderRow: null,
         llm: { history: historyAfterModel },
+        // 2026-08-19 fix — confirmed live (chatId 201335517540524@lid, phone
+        // 201212162308, Confirmed_Orders row 11): this deterministic
+        // confirmation path flips the Sheet's Confirmation Status but never
+        // used to touch session.orderPlaced, unlike applyValidatedOutput's
+        // own order-confirmation path (see its orderConfirmed handling
+        // above), which does. cartRecovery.js's scanAndSendNudges gates
+        // solely on `if (session.orderPlaced) continue;` — so a customer who
+        // confirms via a plain "تمام"/"تأكيد" reply to the order-pipeline's
+        // ask (a common, arguably the MOST common, confirmation path) stayed
+        // permanently nudge-eligible for the rest of her relationship with
+        // the store: her coarse `stage` keeps recomputing into a
+        // NUDGE_ELIGIBLE_STAGES bucket since orderData/recommendedProduct
+        // stay populated, and orderPlaced never flips true to stop it. Not a
+        // cart-recovery bug — cartRecovery.js's one-shot-per-episode design
+        // (2026-08-11) is working exactly as intended; this is what was
+        // silently defeating its own "already ordered" guard. Setting it
+        // true here, matching the other confirmation path, is what actually
+        // stops future nudges for every customer who confirms this way, not
+        // just this one.
+        orderPlaced: true,
       });
       return {
         reply,
@@ -1799,11 +1896,38 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
     const historyAfterUser = pushHistory(history, 'user', modelText);
     const recoveredOrderData = recoverOrderDataOnFailure(session, trimmedText);
 
+    // See MAX_CONSECUTIVE_TIER_FAILURES's comment near the top of this file —
+    // one failure is retried silently as before; a second consecutive one
+    // (with no successful turn in between — reset to 0 below whenever a
+    // validated reply goes out) hands off to a human instead of repeating
+    // the same generic fallback indefinitely.
+    const consecutiveTierFailures = (session.consecutiveTierFailures || 0) + 1;
+    const tierFailureLoopDetected = consecutiveTierFailures > MAX_CONSECUTIVE_TIER_FAILURES;
+
     updateSession(chatId, {
       llm: { history: historyAfterUser },
       orderData: recoveredOrderData,
       consecutiveRepeats,
+      consecutiveTierFailures: tierFailureLoopDetected ? 0 : consecutiveTierFailures,
+      humanHandover: tierFailureLoopDetected ? true : session.humanHandover,
+      // Same "stamped fresh only on a genuinely new handoff" reasoning as the
+      // main success path further down — tierFailureLoopDetected is only
+      // ever true on the turn the handoff actually fires.
+      humanHandoffAt: tierFailureLoopDetected ? Date.now() : session.humanHandoffAt,
     });
+
+    if (tierFailureLoopDetected) {
+      const logEntry = {
+        ...baseLogFields(getSession(chatId), phone, modelText),
+        orderStatus: resolveEarlyStageOrderStatus(recoveredOrderData, session.recommendedProduct),
+        notes: 'تم التحويل لفريق بشري بعد فشل كل طبقات الذكاء الاصطناعي في الرد مرتين متتاليتين لنفس العميل',
+      };
+      const adminNotification =
+        `🔁 الوكيل الذكي حوّل المحادثة لفريق بشري (فشلت كل طبقات الذكاء الاصطناعي مرتين على التوالي)\n` +
+        `رقم العميل: ${phone}\n` +
+        `آخر رسالة: ${trimmedText}`;
+      return { reply: REPEATED_FALLBACK_LOOP_REPLY, logEntry, adminNotification };
+    }
 
     const logEntry = {
       ...baseLogFields(getSession(chatId), phone, modelText),
@@ -1876,6 +2000,7 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
       customerName: applied.orderData.customerName,
       deliveryAddress: applied.orderData.deliveryAddress,
       shippingZone: matchShippingZone(applied.orderData.deliveryAddress),
+      shippingMethod: applied.orderData.shippingMethod,
     });
   }
 
@@ -1953,6 +2078,11 @@ async function handleMessage({ chatId, phone, text, senderName, imageContext }) 
     // escalated, since the human handoff about to happen resolves it — no
     // need to keep counting toward a second escalation on top of the first.
     consecutiveFallbackDowngrades: fallbackLoopDetected ? 0 : consecutiveFallbackDowngrades,
+    // Reaching this point at all means a tier validated this turn, so
+    // whatever streak of total-tier-failures preceded it (see
+    // MAX_CONSECUTIVE_TIER_FAILURES above) is over — reset it rather than
+    // letting it carry into an unrelated later failure.
+    consecutiveTierFailures: 0,
     // One-shot: this reply is the proactive ad-landing greeting (if any was
     // pending), so it must not fire again on the customer's next ordinary
     // message. adLandingCampaignId itself is left alone — it's just a

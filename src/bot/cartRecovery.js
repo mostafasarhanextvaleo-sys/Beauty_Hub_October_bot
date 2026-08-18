@@ -27,82 +27,58 @@ const NUDGE_ELIGIBLE_STAGES = new Set([
   STAGES.AWAIT_ORDER_CONFIRMATION,
 ]);
 
-function pickVariant(variants) {
-  return variants[Math.floor(Math.random() * variants.length)];
+// 2026-08-11 policy change (store owner directive: the old two-stage nudge
+// sequence — a price-anchored reminder, then a second sweeter one ~24h
+// later if the first got no reply — was landing as repeated, annoying
+// pestering rather than a helpful reminder). Replaced with a single,
+// one-shot "cart summary card": one clean recap of what's actually in the
+// customer's cart (currently always one item — this store's flow pins a
+// single session.recommendedProduct, there's no multi-item cart data model
+// yet) plus the total and one polite call-to-action. Sent at most once per
+// abandonment episode — isNudgeDue below never re-fires once nudgeSentAt
+// is set, and llmAgent.js's handleMessage already clears nudgeSentAt the
+// moment the customer sends any new message, so a chat that replies and
+// later goes idle again is naturally eligible for exactly one more card,
+// never a back-to-back sequence.
+//
+// Variant id deliberately kept under the pre-existing 'nudge1_' prefix
+// (scripts/scheduledReport.js's gatherNudgeAttributionStats keys the A/B
+// attribution report off that exact prefix) so this still shows up in that
+// report's existing "first-stage" bucket with no changes needed there — no
+// 'nudge2_*' id is ever produced anymore, so the report's "second stage"
+// bucket will simply and correctly go quiet going forward.
+function buildCartSummaryCard(product) {
+  const itemLine = `▫️ ${product.name} — ${product.price} جنيه`;
+  return (
+    `🛍️ ملخص السلة بتاعتك:\n${itemLine}\n` +
+    `────────────\n` +
+    `الإجمالي: ${product.price} جنيه\n\n` +
+    `تحبي نأكد الأوردر؟ 🌸`
+  );
 }
-
-// Each variant has a stable id, logged via chatLogger.logOutgoing's
-// variantId (same convention as prompts.js's GREETING_VARIANTS) so
-// confirm-rates per phrasing can be compared later against order outcomes
-// in the Leads sheet. Price-anchored on purpose — the previous single
-// message ("لسه مهتمة بكذا؟") never mentioned the price the customer was
-// actually deciding on, which is the single most persuasive fact available.
-// 2026-08-06 fix: variant a used to say "لسه محجوز عشانك" (still reserved
-// for you) — not literally true, since no inventory-hold/reservation system
-// exists anywhere in this codebase (see SECOND_NUDGE_WITH_PRICE's comment
-// below, which already rejected a fabricated "stock running out" claim for
-// this exact honesty reason — this phrase just implied the same thing from
-// the other direction and got missed). Swapped for "لسه متاح" (still
-// available), which keeps the same warm, price-anchored persuasion without
-// claiming an active hold that doesn't exist.
-const FIRST_NUDGE_WITH_PRICE = [
-  { id: 'nudge1_price_a', text: (name, price) => `الـ${name} اللي سألتي عليه لسه متاح بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟` },
-  { id: 'nudge1_price_b', text: (name, price) => `هاي، لسه فاكراك مهتمة بـ${name} (${price} جنيه) — محتاجة أي تفاصيل زيادة؟` },
-];
-
-// Second nudge: only sent if the first got no reply. 2026-08-09 policy
-// change: this used to incentivize with a real free-shipping promise (staff
-// waived the delivery fee at fulfillment) — removed store-wide, every order
-// now always shows the real computed regional shipping fee, no exceptions.
-// Variant ids kept as-is (nudge2_shipping_a/b) even though neither mentions
-// shipping anymore — scripts/scheduledReport.js's nudge-attribution stats
-// key off these exact strings historically, and renaming would silently
-// break that report's continuity. Still deliberately NOT a % price discount
-// (see FIRST_NUDGE_WITH_PRICE's comment on price_quoted validation) and
-// still no fabricated urgency claim, same honesty reasoning as before.
-const SECOND_NUDGE_WITH_PRICE = [
-  {
-    id: 'nudge2_shipping_a',
-    text: (name, price) => `الـ${name} اللي سألتي عليه لسه متاح بـ${price} جنيه بس! 🌸 حابة نأكد الأوردر؟`,
-  },
-  {
-    id: 'nudge2_shipping_b',
-    text: (name, price) => `لسه فاكراك 🌸 ${name} (${price} جنيه) في انتظارك — حابة نكمل الأوردر؟`,
-  },
-];
 
 // Fallback for sessions with no recommendedProduct yet (e.g. still mid
-// category Q&A when they went idle) — same for both stages, matches the
-// original single message.
-const GENERIC_NUDGE = [
-  { id: 'nudge_generic', text: () => 'هاي 🌸 لسه محتاجة مساعدة في حاجة؟ أنا موجودة لو حابة تكملي.' },
-];
+// category Q&A when they went idle) — a cart summary needs a real item to
+// summarize, so this stays a plain, low-key check-in instead. Same one-shot
+// rule applies.
+const GENERIC_NUDGE_TEXT = 'هاي 🌸 لسه محتاجة مساعدة في حاجة؟ أنا موجودة لو حابة تكملي.';
 
-function buildNudgeMessage(session, nudgeStage) {
+function buildNudgeMessage(session) {
   const product = session.recommendedProduct;
   if (product && product.price) {
-    const pool = nudgeStage === 'first' ? FIRST_NUDGE_WITH_PRICE : SECOND_NUDGE_WITH_PRICE;
-    const variant = pickVariant(pool);
-    return { message: variant.text(product.name, product.price), variantId: variant.id };
+    return { message: buildCartSummaryCard(product), variantId: 'nudge1_cart_summary_card' };
   }
-  const variant = pickVariant(GENERIC_NUDGE);
-  return { message: variant.text(), variantId: variant.id };
+  return { message: GENERIC_NUDGE_TEXT, variantId: 'nudge1_generic' };
 }
 
-// Which stage (if any) a session is due for, given the current time — shared
-// between the initial scan and the re-check under the per-chat lock so the
-// two can't disagree about what they're about to send.
-function dueNudgeStage(session, now) {
-  const firstDelayMs = config.cartNudgeDelayHours * 60 * 60 * 1000;
-  const secondDelayMs = config.cartNudgeSecondDelayHours * 60 * 60 * 1000;
-
-  if (!session.nudgeSentAt) {
-    return now - (session.updatedAt || 0) >= firstDelayMs ? 'first' : null;
-  }
-  if (!session.secondNudgeSentAt) {
-    return now - session.nudgeSentAt >= secondDelayMs ? 'second' : null;
-  }
-  return null;
+// Whether a session is due for its one-and-only cart-recovery message right
+// now — shared between the initial scan and the re-check under the per-chat
+// lock so the two can't disagree about what they're about to send. Returns
+// a boolean, not a stage name, now that there's only ever one stage.
+function isNudgeDue(session, now) {
+  if (session.nudgeSentAt) return false;
+  const delayMs = config.cartNudgeDelayHours * 60 * 60 * 1000;
+  return now - (session.updatedAt || 0) >= delayMs;
 }
 
 async function scanAndSendNudges(sendMessageFn) {
@@ -111,21 +87,29 @@ async function scanAndSendNudges(sendMessageFn) {
 
   for (const [chatId, session] of entries) {
     if (!NUDGE_ELIGIBLE_STAGES.has(session.stage)) continue;
-    if (session.orderPlaced || session.humanHandover) continue;
+    // 2026-08-12: the two protected admin/test numbers are exempt from
+    // orderPlaced/humanHandover/cooldown/Blocked/Bot-Paused suppression
+    // under any circumstances — see campaignWorker.isProtectedContact's
+    // header comment. orderPlaced is intentionally left un-exempted even
+    // for protected numbers: a real completed test order genuinely doesn't
+    // need a cart-recovery nudge, same as for any other contact.
+    const isProtected = campaignWorker.isProtectedContact(chatId);
+    if (session.orderPlaced) continue;
+    if (session.humanHandover && !isProtected) continue;
     // 2026-08-06 fix: this scheduler used to be the one automated sender
     // that never checked the owner's Blocked/Bot-Paused flags — only the
     // live inbound-message handler did. A number the owner explicitly
     // marked Blocked ("as if the message never arrived") or Paused (owner
     // is handling them manually right now) could still get an unprompted
     // cart-recovery nudge.
-    if (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId)) continue;
+    if (!isProtected && (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId))) continue;
     // Explicit on top of the humanHandover check above (which already
     // covers this in practice, since a handed-off session's stage becomes
     // CLOSED) — named directly after the 24h cooldown concept so the intent
     // reads clearly even if the stage/humanHandover logic changes later.
-    if (isHumanHandoffCooldownActive(session)) continue;
+    if (!isProtected && isHumanHandoffCooldownActive(session)) continue;
     if (session.nudgeGaveUp) continue;
-    if (!dueNudgeStage(session, now)) continue;
+    if (!isNudgeDue(session, now)) continue;
 
     // eslint-disable-next-line no-await-in-loop
     await runExclusive(chatId, async () => {
@@ -133,20 +117,19 @@ async function scanAndSendNudges(sendMessageFn) {
       // a real message may have arrived and changed things while we scanned.
       const fresh = conversationMemory.getSession(chatId);
       if (!NUDGE_ELIGIBLE_STAGES.has(fresh.stage)) return;
-      if (isHumanHandoffCooldownActive(fresh)) return;
+      if (!isProtected && isHumanHandoffCooldownActive(fresh)) return;
       if (fresh.nudgeGaveUp) return;
       // Same belt-and-suspenders re-check as orderPlaced/humanHandover below —
       // the flag could have flipped while this scan was in flight.
-      if (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId)) return;
+      if (!isProtected && (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId))) return;
       // Belt-and-suspenders independent of stage mapping — a free-form LLM
       // conversation doesn't have a rigid linear machine underneath it, so
       // this guards directly against ever nudging a completed/handed-off chat
       // even if the coarse stage label lags reality for a turn.
-      if (fresh.orderPlaced || fresh.humanHandover) return;
-      const stage = dueNudgeStage(fresh, Date.now());
-      if (!stage) return;
+      if (fresh.orderPlaced || (fresh.humanHandover && !isProtected)) return;
+      if (!isNudgeDue(fresh, Date.now())) return;
 
-      const { message, variantId } = buildNudgeMessage(fresh, stage);
+      const { message, variantId } = buildNudgeMessage(fresh);
       try {
         await sendMessageFn(chatId, message);
         // Nudges are sent outside llmAgent.handleMessage, so without this the
@@ -155,11 +138,7 @@ async function scanAndSendNudges(sendMessageFn) {
         // resolve "it" against. Record it as an assistant turn so the next real
         // reply has full context, same as any other reply the agent sends.
         const updatedHistory = pushHistory((fresh.llm && fresh.llm.history) || [], 'assistant', message);
-        const patch =
-          stage === 'first'
-            ? { nudgeSentAt: Date.now(), llm: { history: updatedHistory }, nudgeFailureCount: 0 }
-            : { secondNudgeSentAt: Date.now(), llm: { history: updatedHistory }, nudgeFailureCount: 0 };
-        conversationMemory.updateSession(chatId, patch);
+        conversationMemory.updateSession(chatId, { nudgeSentAt: Date.now(), llm: { history: updatedHistory }, nudgeFailureCount: 0 });
         chatLogger.logOutgoing({
           chatId,
           phone: fresh.chatId ? fresh.chatId.split('@')[0] : '',
@@ -169,7 +148,7 @@ async function scanAndSendNudges(sendMessageFn) {
           latencyMs: null,
           variantId,
         });
-        logger.info(`Sent ${stage}-stage cart-recovery nudge to ${chatId} (variant: ${variantId}).`);
+        logger.info(`Sent cart-recovery summary card to ${chatId} (variant: ${variantId}).`);
       } catch (err) {
         // 2026-08-03 fix: a send that fails only because the WhatsApp client
         // itself isn't connected right now (a brief reconnect window, not
@@ -182,19 +161,19 @@ async function scanAndSendNudges(sendMessageFn) {
         // just retry next scan, same as the onReady gate already does for
         // each scheduler's very first run.
         if (err && err.message === 'WhatsApp client is not connected.') {
-          logger.warn(`Skipped ${stage}-stage cart-recovery nudge to ${chatId} — WhatsApp client isn't connected right now. Will retry next scan (not counted as a failure).`);
+          logger.warn(`Skipped cart-recovery summary card to ${chatId} — WhatsApp client isn't connected right now. Will retry next scan (not counted as a failure).`);
           return;
         }
         const failureCount = (fresh.nudgeFailureCount || 0) + 1;
         if (failureCount >= MAX_CONSECUTIVE_NUDGE_FAILURES) {
           conversationMemory.updateSession(chatId, { nudgeFailureCount: failureCount, nudgeGaveUp: true });
           logger.error(
-            `Failed to send ${stage}-stage cart-recovery nudge to ${chatId} (${failureCount} consecutive failures) — giving up on this chat's nudges.`,
+            `Failed to send cart-recovery summary card to ${chatId} (${failureCount} consecutive failures) — giving up on this chat's nudges.`,
             err
           );
         } else {
           conversationMemory.updateSession(chatId, { nudgeFailureCount: failureCount });
-          logger.error(`Failed to send ${stage}-stage cart-recovery nudge to ${chatId} (${failureCount}/${MAX_CONSECUTIVE_NUDGE_FAILURES}).`, err);
+          logger.error(`Failed to send cart-recovery summary card to ${chatId} (${failureCount}/${MAX_CONSECUTIVE_NUDGE_FAILURES}).`, err);
         }
       }
     });
@@ -203,7 +182,7 @@ async function scanAndSendNudges(sendMessageFn) {
 
 function startCartRecoveryScheduler(sendMessageFn, intervalMs = CHECK_INTERVAL_MS) {
   logger.info(
-    `Cart-recovery scheduler started (1st nudge after ${config.cartNudgeDelayHours}h, 2nd after ${config.cartNudgeSecondDelayHours}h more, checked every ${intervalMs / 60000}min).`
+    `Cart-recovery scheduler started (single cart-summary card after ${config.cartNudgeDelayHours}h idle, no repeats until the customer replies; checked every ${intervalMs / 60000}min).`
   );
   const timer = setInterval(() => {
     scanAndSendNudges(sendMessageFn).catch((err) => {

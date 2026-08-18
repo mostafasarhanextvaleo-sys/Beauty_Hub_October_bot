@@ -7,6 +7,8 @@ const invoiceService = require('./invoiceService');
 const { matchShippingZone } = require('./shippingZones');
 const logger = require('../utils/logger');
 const { sleep } = require('../utils/helpers');
+const { runExclusive } = require('../utils/chatLock');
+const config = require('../config');
 
 // 2026-08-09 order-management pipeline (Confirmed_Orders columns I:K) — three
 // deterministic Sheet-driven automations, modeled directly on the existing
@@ -72,6 +74,19 @@ function saveState() {
 
 loadState();
 
+// Called by campaignWorker.js's handleOrderConfirmed when it merges a new
+// item into an existing open-draft row and resets that row's Confirmation
+// Status back to 'Hold' (see that function) — without this, runOrderConfirmationRequestCheck's
+// `due` filter would keep skipping the row forever, since this module's own
+// local state still remembers confirmationAskSent:true from the FIRST ask
+// (sent before the item was added), even though the Sheet cell itself now
+// reads 'Hold' again. Clearing it here is what actually lets the re-ask
+// carrying the merged, up-to-date order go out.
+function resetConfirmationAskState(rowNumber) {
+  state.delete(rowNumber);
+  saveState();
+}
+
 // Records an automated outbound message into the customer's own session
 // history as an 'assistant' turn — same reasoning as
 // campaignWorker.appendOfferToSessionHistory (not reused directly: that
@@ -90,7 +105,10 @@ function appendMessageToSessionHistory(chatId, text) {
 // checks the retired deliveryFollowup.js applied (human-handoff cooldown,
 // Bot Paused, Blocked). Returns a skip reason string, or null if OK to send.
 function guardReasonFor(chatId) {
-  if (conversationMemory.isHumanHandoffCooldownActive(conversationMemory.getSession(chatId))) {
+  // 2026-08-12: the two protected admin/test numbers are exempt from the
+  // human-handoff cooldown under any circumstances — see
+  // campaignWorker.isProtectedContact's header comment.
+  if (!campaignWorker.isProtectedContact(chatId) && conversationMemory.isHumanHandoffCooldownActive(conversationMemory.getSession(chatId))) {
     return 'customer is in the 24h human handoff cooldown';
   }
   if (campaignWorker.isBotPausedForContact(chatId) || campaignWorker.isContactBlocked(chatId)) {
@@ -147,28 +165,158 @@ async function runSendInvoiceActionCheck(sendMessageFn, resolvePhoneToChatIdFn) 
         ? `أهلاً ${row.customerName || ''} 🌸 دي فاتورة طلبك: ${row.products || ''} — ${row.totalPrice || ''}. تقدري تفتحيها من هنا: ${invoice.url}\n` +
           `تأكدي الأوردر بالرد بكلمة "تأكيد" أو "تمام".`
         : `أهلاً ${row.customerName || ''} 🌸 دي فاتورة طلبك: ${row.products || ''} — ${row.totalPrice || ''}. تقدري تفتحيها من هنا: ${invoice.url}`;
+      // 2026-08-12 fix — locked per-chatId (same reasoning as
+      // campaignWorker.js's every session/Sheets writer, see its comments):
+      // this reads/replaces session.llm.history AND writes the same
+      // Confirmed_Orders Confirmation Status cell a real-time customer reply
+      // (llmAgent.js, running under whatsapp/client.js's own
+      // runExclusive(message.from) lock) can also write, at any moment.
+      // Without this lock, a fast "تمام" reply landing while this write is
+      // still in flight could have its own genuine 'Confirmed' silently
+      // reverted back to 'Pending' by this write landing second.
+      //
+      // 2026-08-19 audit fix: the lock above only ever prevented the two
+      // WRITES from interleaving — it never stopped this callback from
+      // ACTING on stale data. `row.confirmationStatus` was captured from the
+      // scan snapshot at the top of this function, taken before the
+      // invoice-generation network round-trip and before this lock was even
+      // requested. Confirmed live failure: snapshot reads row 9 as 'Pending';
+      // a customer's real "تمام" reply (a separate, correctly-locked writer)
+      // sets it to 'Confirmed' a moment later; this callback then finally
+      // acquires the lock and calls markInvoiceSent(9, 'Pending') — the
+      // stale value — which unconditionally force-writes column J back to
+      // 'Pending', silently erasing the customer's already-recorded
+      // confirmation. Re-reading the row's live status from inside the lock,
+      // right before the decision that depends on it, closes this — the
+      // lock now actually protects what it was meant to.
       // eslint-disable-next-line no-await-in-loop
-      await sendMessageFn(chatId, text);
-      appendMessageToSessionHistory(chatId, text);
+      await runExclusive(chatId, async () => {
+        await sendMessageFn(chatId, text);
+        appendMessageToSessionHistory(chatId, text);
+        if (awaitsConfirmation) {
+          conversationMemory.updateSession(chatId, {
+            awaitingOrderConfirmationReply: true,
+            orderConfirmationRequestedAt: Date.now(),
+            pendingConfirmedOrderRow: row.rowNumber,
+          });
+        }
+        // Only write 'Sent' (+ 'Pending', see markInvoiceSent) on a confirmed
+        // successful send — a transient failure leaves 'Send Invoice'/'Resend'
+        // visible so the next poll retries it, same convention as
+        // campaignWorker.js's clearOfferTestTrigger.
+        const freshRows = await googleSheets.getConfirmedOrdersPipelineRows();
+        const freshRow = freshRows.find((r) => r.rowNumber === row.rowNumber);
+        const liveConfirmationStatus = freshRow ? freshRow.confirmationStatus : row.confirmationStatus;
+        await googleSheets.markInvoiceSent(row.rowNumber, liveConfirmationStatus);
+      });
       if (awaitsConfirmation) {
-        conversationMemory.updateSession(chatId, {
-          awaitingOrderConfirmationReply: true,
-          orderConfirmationRequestedAt: Date.now(),
-          pendingConfirmedOrderRow: row.rowNumber,
-        });
+        // Feeds runStalledOrderEscalationCheck's >24h clock — see its own
+        // header comment for why this is tracked here rather than derived
+        // from the row's order-creation Date.
+        const prevState = state.get(row.rowNumber) || {};
+        prevState.confirmationAskSentAt = Date.now();
+        state.set(row.rowNumber, prevState);
+        saveState();
       }
-      // Only write 'Sent' (+ 'Pending', see markInvoiceSent) on a confirmed
-      // successful send — a transient failure leaves 'Send Invoice'/'Resend'
-      // visible so the next poll retries it, same convention as
-      // campaignWorker.js's clearOfferTestTrigger.
-      // eslint-disable-next-line no-await-in-loop
-      await googleSheets.markInvoiceSent(row.rowNumber, row.confirmationStatus);
       logger.success(`Invoice sent to ${row.phone} (row ${row.rowNumber}, manual ${row.sendInvoiceAction} action).`);
       sentCount += 1;
     } catch (err) {
       logger.error(`Send Invoice Action failed for row ${row.rowNumber} (${row.phone}). Leaving it set so the next poll retries.`, err);
     }
   }
+}
+
+// --- 1b. Confirmation Status = Rejected -> Order Status sync (column K) ---
+// 2026-08-11 (store owner directive): keeps Order Status aligned with
+// Confirmation Status whenever the latter reads 'Rejected' — a rejected
+// order left showing Order Status 'Processing' (the default written at
+// row creation, see initializeOrderPipelineColumns) reads as if it's still
+// headed out for fulfillment, which is wrong and has real
+// warehouse/delivery-staff consequences if acted on literally.
+//
+// Deliberately a Sheet-driven poll rather than special-casing every place
+// Confirmation Status can become 'Rejected' (today: llmAgent.js's chat
+// rejection path via setConfirmationStatus — see orderConfirmationReplyDetector's
+// caller — but also a staff member editing the Confirmation Status dropdown
+// cell directly in the Sheet, which no code path "calls" at all). Polling
+// the Sheet itself is the one mechanism that catches both sources uniformly,
+// same reasoning as every other check in this file. Only ever moves K
+// TOWARD 'Rejected' — never touches a row whose Order Status already reads
+// 'Rejected' (no-op, cheap to re-check) and never overwrites any other
+// Order Status value for a row that isn't itself Rejected.
+async function runRejectedStatusSyncCheck() {
+  const rows = await googleSheets.getConfirmedOrdersPipelineRows();
+  const outOfSync = rows.filter((r) => r.confirmationStatus === 'Rejected' && r.orderStatus !== 'Rejected');
+  if (outOfSync.length === 0) return;
+
+  for (const row of outOfSync) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await googleSheets.setOrderStatus(row.rowNumber, 'Rejected');
+      logger.success(`Synced Order Status to 'Rejected' for Confirmed_Orders row ${row.rowNumber} (${row.phone}) — Confirmation Status was already Rejected.`);
+    } catch (err) {
+      logger.error(`Failed to sync Order Status to 'Rejected' for row ${row.rowNumber} (${row.phone}). Will retry next scan.`, err);
+    }
+  }
+}
+
+// --- 1c. Stalled-order escalation (2026-08-12, store owner directive) ---
+// A row can sit on Confirmation Status='Pending' indefinitely if the
+// customer simply never replies — nothing in this file previously noticed
+// or surfaced that. Fires exactly once per row (guarded by
+// state.stalledEscalationSent, same one-shot convention as
+// deliveredMessageSent above) once it's been Pending for longer than
+// STALLED_ORDER_ESCALATION_MS, notifying the admin via WhatsApp so a human
+// can follow up — deliberately does NOT auto-guess a resolution
+// (Confirmed/Rejected) on the customer's behalf, since this file has no real
+// signal for what they actually decided; a human is the only correct source
+// of truth for a stalled reply. Clock starts from confirmationAskSentAt
+// (stamped by runSendInvoiceActionCheck/runOrderConfirmationRequestCheck the
+// moment the ask actually went out) — falls back to the row's own order
+// Date for any row already Pending before this feature existed (2026-08-12
+// cleanup: rows 4 and 6 both predate confirmationAskSentAt tracking), which
+// slightly understates the true age (the ask usually goes out same-day) but
+// never overstates it, so it can only escalate a genuinely-stalled row, never
+// a fresh one.
+const STALLED_ORDER_ESCALATION_MS = 24 * 60 * 60 * 1000;
+
+async function runStalledOrderEscalationCheck(sendMessageFn) {
+  if (!config.adminWhatsappNumber) return;
+  const rows = await googleSheets.getConfirmedOrdersPipelineRows();
+  const pending = rows.filter((r) => r.confirmationStatus === 'Pending');
+  if (pending.length === 0) return;
+
+  const now = Date.now();
+  const adminChatId = `${config.adminWhatsappNumber}@c.us`;
+  let stateChanged = false;
+
+  for (const row of pending) {
+    const prev = state.get(row.rowNumber) || {};
+    if (prev.stalledEscalationSent) continue; // eslint-disable-line no-continue
+    const askSentAt = prev.confirmationAskSentAt || Date.parse(row.date) || now;
+    const ageMs = now - askSentAt;
+    if (ageMs < STALLED_ORDER_ESCALATION_MS) continue; // eslint-disable-line no-continue
+
+    const ageHours = Math.floor(ageMs / (60 * 60 * 1000));
+    try {
+      const text =
+        `⚠️ طلب معلّق بدون رد من العميل من ${ageHours} ساعة\n` +
+        `صف ${row.rowNumber} — ${row.customerName || 'بدون اسم'} (${row.phone})\n` +
+        `${row.products || ''} — ${row.totalPrice || ''}\n` +
+        `محتاج متابعة يدوية.`;
+      // eslint-disable-next-line no-await-in-loop
+      await sendMessageFn(adminChatId, text);
+      prev.stalledEscalationSent = true;
+      logger.warn(`Confirmed_Orders row ${row.rowNumber} (${row.phone}) has been Pending for ~${ageHours}h with no reply — escalated to admin.`);
+    } catch (err) {
+      logger.error(`Stalled-order escalation notification failed for row ${row.rowNumber} (${row.phone}). Will retry next scan.`, err);
+    } finally {
+      state.set(row.rowNumber, prev);
+      stateChanged = true;
+    }
+  }
+
+  if (stateChanged) saveState();
 }
 
 // --- 2. Confirmation Status = Hold (column J) ---
@@ -209,24 +357,31 @@ async function runOrderConfirmationRequestCheck(sendMessageFn, resolvePhoneToCha
         `أهلاً ${row.customerName || ''} 🌸 دي تفاصيل طلبك: ${row.products || ''} — ${row.totalPrice || ''}. ` +
         `تقدري تفتحي فاتورتك من هنا: ${invoice.url}\n` +
         `تأكدي الأوردر بالرد بكلمة "تأكيد" أو "تمام".`;
+      // 2026-08-12 fix — locked per-chatId, same reasoning as
+      // runSendInvoiceActionCheck above: this is the other writer of the
+      // same Confirmed_Orders Confirmation Status cell a real-time customer
+      // reply can race against.
       // eslint-disable-next-line no-await-in-loop
-      await sendMessageFn(chatId, text);
-      appendMessageToSessionHistory(chatId, text);
-      conversationMemory.updateSession(chatId, {
-        awaitingOrderConfirmationReply: true,
-        orderConfirmationRequestedAt: Date.now(),
-        pendingConfirmedOrderRow: row.rowNumber,
+      await runExclusive(chatId, async () => {
+        await sendMessageFn(chatId, text);
+        appendMessageToSessionHistory(chatId, text);
+        conversationMemory.updateSession(chatId, {
+          awaitingOrderConfirmationReply: true,
+          orderConfirmationRequestedAt: Date.now(),
+          pendingConfirmedOrderRow: row.rowNumber,
+        });
+        // Flip Hold -> Pending now that the ask has actually gone out — makes
+        // "already asked, awaiting reply" visible directly on the Sheet
+        // (staff-readable) instead of only in this file's local state.json,
+        // and doubles as a second guard against re-asking the same row (the
+        // `due` filter above only matches confirmationStatus === 'Hold').
+        await googleSheets.setConfirmationStatus(row.rowNumber, 'Pending');
       });
-      // Flip Hold -> Pending now that the ask has actually gone out — makes
-      // "already asked, awaiting reply" visible directly on the Sheet
-      // (staff-readable) instead of only in this file's local state.json,
-      // and doubles as a second guard against re-asking the same row (the
-      // `due` filter above only matches confirmationStatus === 'Hold').
-      // eslint-disable-next-line no-await-in-loop
-      await googleSheets.setConfirmationStatus(row.rowNumber, 'Pending');
       logger.success(`Order-confirmation request sent to ${row.phone} (row ${row.rowNumber}).`);
       sentCount += 1;
       prev.confirmationAskSent = true;
+      // Feeds runStalledOrderEscalationCheck's >24h clock.
+      prev.confirmationAskSentAt = Date.now();
     } catch (err) {
       logger.error(`Order-confirmation request failed for row ${row.rowNumber} (${row.phone}). Will retry next scan.`, err);
     } finally {
@@ -279,8 +434,23 @@ async function runOrderDeliveredCheck(sendMessageFn, resolvePhoneToChatIdFn) {
       try {
         // upsertTrustedClient rounds the accumulated totals itself — no need
         // to round this per-order figure before handing it off.
+        //
+        // 2026-08-19 — brought in line with invoiceGenerator.js's identical
+        // fee logic (same Shipping Fee Override / Same-Day Express handling,
+        // same "code re-verifies the zone actually has expressFeeEGP, never
+        // trusts the stored label alone" reasoning) — previously this loyalty
+        // total silently used the flat zone fee regardless of either, a
+        // pre-existing inconsistency with what the customer's real invoice
+        // showed, now closed rather than left as a second source of truth.
         const shippingZone = matchShippingZone(row.address);
-        const orderTotal = (parseFloat(row.totalPrice) || 0) + (shippingZone ? shippingZone.feeEGP : 0);
+        const hasShippingOverride = row.shippingFeeOverride !== undefined && row.shippingFeeOverride !== null && String(row.shippingFeeOverride).trim() !== '';
+        const isExpressOrder = !hasShippingOverride && row.shippingMethod === 'express' && shippingZone && shippingZone.expressFeeEGP;
+        const shippingFee = hasShippingOverride
+          ? parseFloat(row.shippingFeeOverride) || 0
+          : shippingZone
+          ? (isExpressOrder ? shippingZone.expressFeeEGP : shippingZone.feeEGP)
+          : 0;
+        const orderTotal = (parseFloat(row.totalPrice) || 0) + shippingFee;
         // eslint-disable-next-line no-await-in-loop
         await googleSheets.upsertTrustedClient({
           customerName: row.customerName,
@@ -319,13 +489,18 @@ async function runOrderDeliveredCheck(sendMessageFn, resolvePhoneToChatIdFn) {
         await sleep(SEND_DELAY_MS);
       }
       const text = 'وصلك طلبك؟ 🌸 حابين نعرف رأيك! قيمي تجربتك معانا من 1 لـ5 وسيبلنا تعليق لو حابة.';
+      // 2026-08-12 fix — locked per-chatId, same reasoning as the two checks
+      // above: this also replaces session.llm.history, which a concurrent
+      // real-time reply could otherwise silently clobber or be clobbered by.
       // eslint-disable-next-line no-await-in-loop
-      await sendMessageFn(chatId, text);
-      appendMessageToSessionHistory(chatId, text);
-      conversationMemory.updateSession(chatId, {
-        awaitingFeedbackRating: true,
-        feedbackRequestedAt: Date.now(),
-        feedbackOrderRowNumber: row.rowNumber,
+      await runExclusive(chatId, async () => {
+        await sendMessageFn(chatId, text);
+        appendMessageToSessionHistory(chatId, text);
+        conversationMemory.updateSession(chatId, {
+          awaitingFeedbackRating: true,
+          feedbackRequestedAt: Date.now(),
+          feedbackOrderRowNumber: row.rowNumber,
+        });
       });
       logger.success(`Delivery/rating request sent to ${row.phone} (row ${row.rowNumber}).`);
       sentCount += 1;
@@ -359,6 +534,10 @@ function startOrderPipelineScheduler(sendMessageFn, resolvePhoneToChatIdFn) {
       .catch((err) => logger.error('Send Invoice Action check failed.', err))
       .then(() => runOrderConfirmationRequestCheck(sendMessageFn, resolvePhoneToChatIdFn))
       .catch((err) => logger.error('Order-confirmation request check failed.', err))
+      .then(() => runRejectedStatusSyncCheck())
+      .catch((err) => logger.error('Rejected Order Status sync check failed.', err))
+      .then(() => runStalledOrderEscalationCheck(sendMessageFn))
+      .catch((err) => logger.error('Stalled-order escalation check failed.', err))
       .finally(() => {
         fastScanInProgress = false;
       });
@@ -391,4 +570,7 @@ module.exports = {
   runSendInvoiceActionCheck,
   runOrderConfirmationRequestCheck,
   runOrderDeliveredCheck,
+  runRejectedStatusSyncCheck,
+  runStalledOrderEscalationCheck,
+  resetConfirmationAskState,
 };

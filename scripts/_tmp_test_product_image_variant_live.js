@@ -65,9 +65,12 @@ require.cache[agentStatsPath] = { id: agentStatsPath, filename: agentStatsPath, 
   delete require.cache[require.resolve('../src/bot/llmAgent')];
   const llmAgent = require('../src/bot/llmAgent');
 
-  const cream = productMatcher.getById('18');
-  const gel = productMatcher.getById('19');
-  assert.ok(cream && gel, 'expected the real sunblock cream/gel pair (ids 18/19) to still exist in the live catalog');
+  // 2026-08-12: catalog id scheme changed from plain numbers to "C"-prefixed
+  // SKUs since this test was written (ids 18/19 no longer resolve) — updated
+  // to the current live equivalents (C018/C019, same real products).
+  const cream = productMatcher.getById('C018');
+  const gel = productMatcher.getById('C019');
+  assert.ok(cream && gel, 'expected the real sunblock cream/gel pair (ids C018/C019) to still exist in the live catalog');
 
   // --- 1. The exact real failing message: must now find the GEL variant, not repeat the cream ---
   {
@@ -160,9 +163,9 @@ require.cache[agentStatsPath] = { id: agentStatsPath, filename: agentStatsPath, 
   //        disagree (see the "Ground-truth check" comment in
   //        handleProductImageRequest). ---
   {
-    const dearCleanser = productMatcher.getById('14');
-    const target = productMatcher.getById('1');
-    assert.ok(dearCleanser && target, 'expected both real products (ids 14 and 1) to still exist in the live catalog');
+    const dearCleanser = productMatcher.getById('C014');
+    const target = productMatcher.getById('C001');
+    assert.ok(dearCleanser && target, 'expected both real products (ids C014 and C001) to still exist in the live catalog');
 
     const chatId = 'LIVE_VARIANT_6_STALE_PIN@lid';
     conversationMemoryStub.updateSession(chatId, {
