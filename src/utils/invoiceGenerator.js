@@ -1,9 +1,87 @@
 const logger = require('./logger');
 const { STORE_NAME } = require('../bot/llmSystemPrompt');
 const { matchShippingZone } = require('../bot/shippingZones');
+const productMatcher = require('../bot/productMatcher');
 
 function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Same diacritic/whitespace normalization llmAgent.js's productNameAppearsInReply
+// already uses for exactly this kind of "compare a free-text product name
+// against a catalog entry" job — kept as a local copy (not imported) since
+// llmAgent.js pulls in a lot more than this file needs and importing back
+// would risk a circular require (llmAgent.js -> llmSystemPrompt.js, which
+// this file already requires).
+function normalizeProductName(text) {
+  return String(text || '')
+    .replace(/[ً-ٰٟ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// 2026-08-19 addition — Confirmed_Orders' "Products" column stores multiple
+// items as one "A + B" string with a single combined Total Price (see
+// campaignWorker.js's findOpenDraftOrderRow/updateConfirmedOrderItems merge
+// path) — no per-item price was ever kept. Confirmed live, Confirmed_Orders
+// row 14 (Hanan Ndy): the invoice showed one row for "بريتي وومن قلم كحل
+// ثابت + غسول مويست-1 للبشرة العادية الحساسة والجافة" at the combined 270
+// EGP, not the real 70/200 split the owner wanted visible.
+//
+// Rather than inventing a split (dividing the total evenly would show a
+// wrong price for both real items whenever they differ, which they almost
+// always do), each "+"-separated name is looked up against the LIVE catalog
+// (productMatcher.getAllProducts(), already warmed in-process — no network
+// call here) by exact name match after normalization — the same "ground a
+// number in real data, never guess" discipline as every other price in this
+// codebase (rule 8, validateModelOutput's price_quoted check). Only trusted
+// when EVERY split part resolves to a real product AND their prices sum to
+// within a 1 EGP rounding tolerance of the row's actual stored Total Price
+// (protects against a stale/renamed catalog entry silently producing a
+// wrong-but-plausible-looking breakdown) — otherwise falls back to the
+// original single combined row, exactly the pre-existing behavior, so this
+// can only improve on it, never show something wrong.
+function buildLineItems({ products, productTotal, quantity }) {
+  const rawTotal = parsePriceToNumber(productTotal);
+  const fallbackQty = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+  const fallbackLine = () => [
+    {
+      name: products || 'غير محدد',
+      quantity: fallbackQty,
+      unitPrice: fallbackQty > 0 ? rawTotal / fallbackQty : rawTotal,
+      lineTotal: rawTotal,
+    },
+  ];
+
+  const parts = String(products || '')
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return fallbackLine();
+
+  const catalog = productMatcher.getAllProducts();
+  const resolved = parts.map((part) => {
+    const target = normalizeProductName(part);
+    const match = catalog.find((p) => normalizeProductName(String(p.name || '').split('(')[0]) === target);
+    // Arabic-only display name, same reasoning as normalizeProductName's
+    // matching above — catalog names carry a "(English translation)"
+    // parenthetical the customer never sees in chat (the model only ever
+    // writes the Arabic portion), so the split rows must match that, not
+    // suddenly show the raw bilingual catalog string.
+    return match ? { name: String(match.name || '').split('(')[0].trim(), price: parsePriceToNumber(match.price) } : null;
+  });
+  if (resolved.some((r) => !r)) return fallbackLine();
+
+  const sum = resolved.reduce((s, r) => s + r.price, 0);
+  if (Math.abs(sum - rawTotal) > 1) {
+    logger.warn(
+      `Invoice: split "${products}" into ${parts.length} real catalog products, but their prices (${sum}) don't sum to the row's stored Total Price (${rawTotal}) — showing the original combined row instead of a misleading breakdown.`
+    );
+    return fallbackLine();
+  }
+
+  return resolved.map((r) => ({ name: r.name, quantity: 1, unitPrice: r.price, lineTotal: r.price }));
 }
 
 // Prices throughout this system are free text typed straight into the
@@ -48,8 +126,12 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
   // than trusting a separately-stored unit price that could drift out of
   // sync with it. Defaults to 1 (unaffected, unit price == line total)
   // for every pre-quantity-feature order and any row where it's unset.
-  const quantityNum = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
-  const unitPriceNum = quantityNum > 0 ? productTotalNum / quantityNum : productTotalNum;
+  //
+  // 2026-08-19 — multi-product orders (see buildLineItems above) now render
+  // as one row per real item instead of one combined row; a single-product
+  // order (the common case) still gets exactly the quantity-aware row
+  // described above, via buildLineItems' own fallback path.
+  const lineItems = buildLineItems({ products, productTotal, quantity });
   // 2026-08-09 nationwide shipping expansion — the flat 60-EGP constant this
   // used to add is gone; the real fee now depends on the customer's actual
   // address, computed the same deterministic way everywhere else in this
@@ -200,7 +282,12 @@ function buildInvoiceHtml({ invoiceNumber, dateLabel, customerName, phone, addre
         <table class="items">
           <thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
           <tbody>
-            <tr><td>${escapeHtml(products) || 'غير محدد'}</td><td>${quantityNum}</td><td>${formatEgp(unitPriceNum)}</td><td>${formatEgp(productTotalNum)}</td></tr>
+            ${lineItems
+              .map(
+                (item) =>
+                  `<tr><td>${escapeHtml(item.name) || 'غير محدد'}</td><td>${item.quantity}</td><td>${formatEgp(item.unitPrice)}</td><td>${formatEgp(item.lineTotal)}</td></tr>`
+              )
+              .join('\n            ')}
           </tbody>
         </table>
       </div>

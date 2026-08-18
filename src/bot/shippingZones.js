@@ -25,30 +25,49 @@ const SHIPPING_ZONES = [
   // "fixed alternative to standard, not an add-on" shape as before — see
   // expressFeeEGP's original comment on cairo_giza for that reasoning, only
   // the zone it lives on changed.
+  // 2026-08-19 (owner's updated rate table): October's standard fee moved
+  // 50 -> 70 EGP, now the same tier as Helwan/15 May/Giza-outskirts below.
+  // Deliberately still its OWN zone object, not merged into 'helwan' despite
+  // sharing that fee: expressFeeEGP must stay October/Zayed-only (per the
+  // same day's earlier express-restriction directive — Helwan is nowhere
+  // near a 35-min drive of October), and a zone object's expressFeeEGP is
+  // the only place that eligibility lives. Same fee, different express
+  // eligibility = two zone objects, not one; matchShippingZone doesn't care
+  // which zone a fee "conceptually" belongs to, only that each real address
+  // resolves to the right fee AND the right express eligibility.
   {
     id: 'october',
     name: 'أكتوبر – حدائق أكتوبر – الشيخ زايد',
-    feeEGP: 50,
+    feeEGP: 70,
     expressFeeEGP: 100,
     keywords: ['اكتوبر', 'حدائق اكتوبر', 'الشيخ زايد', 'زايد', '6 اكتوبر', 'سادس اكتوبر'],
   },
   {
     id: 'tagamoa',
-    name: 'التجمع – مدينتي – الشروق – بدر',
+    name: 'التجمعات والمدن الجديدة',
     feeEGP: 75,
     keywords: ['التجمع', 'تجمع', 'مدينتي', 'الشروق', 'بدر'],
   },
+  // 2026-08-19 — added 'مؤسسة الزكاة'/'مؤسسة الذكاء' (both spellings kept,
+  // since the owner's own rate-table message spelled it "الذكاء" but that
+  // reads as a likely typo for the real Qalyubia-area name "الزكاة" — safer
+  // to match either real customer phrasing than guess wrong and silently
+  // miss it) and 'جسر السويس' per the owner's updated table. Fee unchanged.
   {
     id: 'shubra_marg',
-    name: 'شبرا الخيمة – المرج – الخصوص – السلام',
+    name: 'شبرا الخيمة – المرج – الخصوص – مؤسسة الزكاة – جسر السويس – السلام',
     feeEGP: 70,
-    keywords: ['شبرا الخيمة', 'المرج', 'الخصوص', 'مدينة السلام', 'حي السلام'],
+    keywords: ['شبرا الخيمة', 'المرج', 'الخصوص', 'مؤسسة الزكاة', 'مؤسسة الذكاء', 'جسر السويس', 'مدينة السلام', 'حي السلام'],
   },
+  // 2026-08-19 — fee unchanged (already 70); added 'أطراف الجيزة' (Giza
+  // outskirts), newly grouped into this tier per the owner's updated table.
+  // See the 'october' zone's comment above for why this stays a separate
+  // zone object rather than merging with it despite the identical fee.
   {
     id: 'helwan',
-    name: 'حلوان – 15 مايو',
+    name: 'حلوان – 15 مايو – أطراف الجيزة',
     feeEGP: 70,
-    keywords: ['حلوان', '15 مايو', 'خمستاشر مايو'],
+    keywords: ['حلوان', '15 مايو', 'خمستاشر مايو', 'أطراف الجيزة', 'اطراف الجيزة'],
   },
   {
     id: 'delta_canal',
